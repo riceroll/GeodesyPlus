@@ -288,40 +288,22 @@ int main(int argc, char **argv) {
             if (n_right->up == n_up_right) {  // in a quad
               Node* n_d = n;
               Node* n_u = n->up;
-
-              Node* n_a;
-              Node* n_b;
-              Node* n_c;
               bool right_most = false;
               // keep moving towards the right edge
               while (true) {
-                n_a = n_u;
-                n_b = n_d;
                 if (n_u == n_up_right) {
                   if (n_d->right == n_right) {
-                    n_a = n_right;
-                    n_b = n_u;
-                    n_c = n_d;
                     right_most = true;
                   }
                   else {
-                    n_a = n_d->right;
-                    n_b = n_u;
-                    n_c = n_d;
                     n_d = n_d->right;
                   }
                 }
                 else if (n_d == n_right) {
                   if (n_u->right == n_up_right) {
-                    n_a = n_right;
-                    n_b = n_up_right;
-                    n_c = n_u;
                     right_most = true;
                   }
                   else {
-                    n_a = n_right;
-                    n_b = n_u->right;
-                    n_c = n_u;
                     n_u = n_u->right;
                   }
                 }
@@ -330,90 +312,10 @@ int main(int argc, char **argv) {
                   Eigen::RowVector3d vec_u = n_d->right->pos - n_u->pos;
 
                   if ( (vec_d.norm() < vec_u.norm()) or (n_d == n_right) ) {  // connect the shorter diagonal
-                    n_c = n_u->right;
                     n_u = n_u->right;
                   } else {
-                    n_c = n_d->right;
                     n_d = n_d->right;
                   }
-                }
-
-                // insert the current triangle
-                {
-                  Halfedge *h_a = new Halfedge();
-                  Halfedge *h_b = new Halfedge();
-                  Halfedge *h_c = new Halfedge();
-                  h_a->node = n_a;
-                  n_a->halfedge = h_a;
-                  h_b->node = n_b;
-                  n_b->halfedge = h_b;
-                  h_c->node = n_c;
-                  n_c->halfedge = h_c;
-                  h_a->prev = h_c;  // ?? redundent?
-                  h_b->prev = h_a;
-                  h_c->prev = h_b;
-
-                  Face *f;
-                  f = new Face();
-                  f->idx = faces.size();
-                  f->halfedge = h_a;
-                  faces.push_back(f);
-                  h_a->face = f;
-
-                  f->idx = faces.size();
-                  f->halfedge = h_b;
-                  faces.push_back(f);
-                  h_b->face = f;
-
-                  f->idx = faces.size();
-                  f->halfedge = h_c;
-                  faces.push_back(f);
-                  h_c->face = f;
-
-                  Edge *e;
-                  if (edges.count({n_a->idx, n_b->idx})) {
-                    e = edges.find({n_a->idx, n_b->idx})->second;
-                    h_a->twin = e->halfedge;
-                    e->halfedge->twin = h_a;
-                  } else {
-                    e = new Edge();
-                    e->idx = edges.size();
-                    e->halfedge = h_a;
-                  }
-                  edges[{n_a->idx, n_b->idx}] = e;
-
-                  h_a->edge = e;
-
-                  if (edges.count({n_b->idx, n_c->idx})) {
-                    e = edges.find({n_b->idx, n_c->idx})->second;
-                    h_b->twin = e->halfedge;
-                    e->halfedge->twin = h_b;
-                  } else {
-                    e = new Edge();
-                    e->idx = edges.size();
-                    e->halfedge = h_b;
-                  }
-                  edges[{n_b->idx, n_c->idx}] = e;
-                  h_b->edge = e;
-
-                  if (edges.count({n_c->idx, n_a->idx})) {
-                    e = edges.find({n_c->idx, n_a->idx})->second;
-                    h_c->twin = e->halfedge;
-                    e->halfedge->twin = h_c;
-                  } else {
-                    e = new Edge();
-                    e->idx = edges.size();
-                    e->halfedge = h_c;
-                  }
-                  edges[{n_c->idx, n_a->idx}] = e;
-                  h_c->edge = e;
-
-                  h_a->idx = halfedges.size();
-                  halfedges.push_back(h_a);
-                  h_b->idx = halfedges.size();
-                  halfedges.push_back(h_b);
-                  h_c->idx = halfedges.size();
-                  halfedges.push_back(h_c);
                 }
 
                 if (right_most) {
@@ -453,92 +355,12 @@ int main(int argc, char **argv) {
 
               Node* n_center = new Node();
               n_center->idx = graph.size();
-//              n_center->halfedge
               n_center->pos = center_pos;
               n_center->pos_origin = center_pos;
               n_center->idx_iso = -1; // TODO: indexing for inserted isoline
               n_center->idx_grad = -1;
 
               graph.push_back(n_center);
-
-              // halfedge mesh
-              int i_edge = 0;
-              Halfedge* h_u_d_p;
-              Halfedge* h_u_d_first;
-              for (auto n_iter : boundary_top) {
-                // for all nodes
-
-                Edge* e = new Edge();
-                Face* f = new Face();
-                Halfedge* h_h = new Halfedge();   // horizontal
-                Halfedge* h_d_u = new Halfedge(); // down to up
-                Halfedge* h_u_d = new Halfedge(); // up to down
-
-                e->idx = edges.size();
-                e->halfedge = h_u_d;
-                edges[{n_iter->idx, n_center->idx}] = e;
-
-                f->idx = faces.size();
-                f->halfedge = h_u_d;
-                faces.push_back(f);
-
-                h_h->idx = halfedges.size();
-                h_h->node = n_iter;
-                Halfedge* hh = n_iter->halfedge;
-                while (hh->prev->twin) {
-                  if (hh->prev->node->idx_iso == n_iter->idx_iso) break;
-                  hh = hh->prev->twin;
-                }
-                hh = hh->prev;
-                h_h->edge = hh->edge;
-                h_h->face = f;
-                h_h->prev = h_u_d;
-                h_h->next = nullptr;
-                h_h->twin = hh;
-
-                hh->twin = h_h;
-                halfedges.push_back(h_h);
-
-                h_d_u->idx = halfedges.size();
-                h_d_u->node = n_iter;
-                h_d_u->edge = e;
-                h_d_u->face = nullptr;
-                h_d_u->prev = nullptr;
-                h_d_u->next = nullptr;
-                h_d_u->twin = h_u_d;
-                halfedges.push_back(h_d_u);
-
-                h_u_d->idx = halfedges.size();
-                h_u_d->node = n_center;
-                h_u_d->edge = e;
-                h_u_d->face = f;
-                h_u_d->prev = nullptr;
-                h_u_d->next = h_h;
-                h_u_d->twin = h_d_u;
-                halfedges.push_back(h_u_d);
-
-                if (i_edge != 0) {
-                  h_u_d_p->next->next = h_d_u;
-                  h_u_d_p->prev = h_d_u;
-                  h_d_u->face = h_u_d_p->face;
-                  h_d_u->prev = h_u_d_p->next;
-                  h_d_u->next = h_u_d_p;
-
-                  if (i_edge == boundary_top.size()-1 ) {
-                    h_h->next = h_u_d_first->twin;
-                    h_u_d->prev = h_u_d_first->twin;
-                    h_u_d_first->twin->face = f;
-                    h_u_d_first->twin->prev = h_h;
-                    h_u_d_first->twin->next = h_u_d;
-                  }
-                }
-                else {
-                  h_u_d_first = h_u_d;
-                }
-                h_u_d_p = h_u_d;
-                i_edge++;
-              }
-
             }
 
             else {
@@ -604,8 +426,6 @@ int main(int argc, char **argv) {
               }
 
             }
-
-
           }
 
           if (!n->right) {cerr<<n->idx<<" has no right node."<<endl;}
