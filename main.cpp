@@ -29,6 +29,7 @@
 #include "Constraint.h"
 #include "Force.h"
 
+
 using namespace std;
 
 struct Node;
@@ -38,6 +39,8 @@ struct Halfedge;
 
 struct Node {
   int idx = -1;
+  set<Edge*> edges;
+
   Halfedge* halfedge = nullptr;
 
   Eigen::RowVector3d pos;
@@ -52,12 +55,12 @@ struct Node {
 
 struct Edge {
   int idx = -1;
+  set<Node*> nodes;
   Halfedge* halfedge = nullptr;
-};
-
-struct Face {
-  int idx = -1;
-  Halfedge* halfedge = nullptr;
+  string spring = "stretch";      // stretch,
+  Eigen::RowVector3d get_centroid() {
+    return ((*nodes.begin())->pos + (*next(nodes.begin(), 1))->pos) / 2;
+  }
 };
 
 struct Halfedge {
@@ -70,30 +73,43 @@ struct Halfedge {
   Halfedge* twin = nullptr;
 };
 
+struct Face {
+  int idx = -1;
+  Halfedge* halfedge = nullptr;
+  Eigen::RowVector3d get_centroid() {
+    Eigen::RowVector3d p = this->halfedge->node->pos;
+    p += this->halfedge->next->node->pos;
+    p += this->halfedge->prev->node->pos;
+    p /= 3;
+    return p;
+  }
+};
+
 
 int main(int argc, char **argv) {
   Eigen::MatrixXd V;  // n_vertices * 3d
   Eigen::MatrixXi F;  // n_faces * 3i
-  vector<Node*> graph;
+  vector<Node*> nodes;
+  vector<Edge*> edges;
   vector<Face*> faces;
   vector<Halfedge*> halfedges;
-  map<set<int>, Edge*> edges; // set of two vertices indices to Edge*
 
   ShapeOp::Solver* solver;
   Eigen::MatrixXd points;
   igl::opengl::glfw::Viewer viewer;
   igl::opengl::glfw::imgui::ImGuiMenu menu;
 
-  int idx_n_selected = 0;
+  int idx_focus = 0;
+  string type_focus = "node";
   float avg_len_iso_edge = -1;
   float avg_len_grad_edge = -1;
   float iso_spacing = 1;
   float grad_spacing = 1;
   bool display_label = false;
+  int display_mode = 0; // 0: graph, 1: edges, 2: nodes
 
-  int ii = 0;
-  auto redraw = [&](string type = "graph") {
-    // type = "graph" / "edges" / "mesh"
+  auto redraw = [&]() {
+    // 0: graph, 1: edges, 2: nodes
     viewer.data().clear();
 
     viewer.data().points = Eigen::MatrixXd(0, 6);
@@ -101,29 +117,95 @@ int main(int argc, char **argv) {
     viewer.data().labels_positions = Eigen::MatrixXd(0, 3);
     viewer.data().labels_strings.clear();
 
+    if (display_label) {
+      for (auto n : nodes) {
+        viewer.data().add_label(n->pos, to_string(n->idx));
+      }
+    }
 
-    if (type == "graph") {
+    if (display_mode == 0) {  // graph
       viewer.data().points = Eigen::MatrixXd(0, 6);
       viewer.data().lines = Eigen::MatrixXd(0, 9);
       viewer.data().labels_positions = Eigen::MatrixXd(0, 3);
       viewer.data().labels_strings.clear();
-      for (auto n : graph) {
-        if (n->idx == idx_n_selected)
+      for (auto n : nodes) {
+        if (n->idx == idx_focus)
           viewer.data().add_points(n->pos, Eigen::RowVector3d(0.9, 0.9, 0));
         else
           viewer.data().add_points(n->pos, Eigen::RowVector3d(0, 0.9, 0.9));
-        if (display_label)
-          viewer.data().add_label(n->pos, to_string(n->idx));
         if (n->right) viewer.data().add_edges(n->pos, n->right->pos, Eigen::RowVector3d(0.9, 0, 0));
         if (n->up) viewer.data().add_edges(n->pos, n->up->pos, Eigen::RowVector3d(0, 0.9, 0));
       }
     }
 
+    else if (display_mode == 1) { // edges
+      for (auto e : edges) {
+        Node* n_a = *e->nodes.begin();
+        Node* n_b = *next(e->nodes.begin(), 1);
 
-//    else if (type == "edges") {
-//       from A + edges* to points, lines
+        if (e->spring == "stretch")
+          viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0.9, 0));
+        else if (e->spring == "bridge")
+          viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0.9, 0, 0));
+        else if (e->spring == "boundary")
+          viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0, 0.9));
+      }
+
+      //       from A + edges* to points, lines
 //       A + edges
-//    }
+    }
+
+    else if (display_mode == 2){  // nodes
+
+      for (auto n : nodes) {
+        for (auto e : n->edges) {
+          Node* n_a = *e->nodes.begin();
+          Node* n_b = *next(e->nodes.begin(), 1);
+
+          if (e->spring == "stretch")
+            viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0.9, 0));
+          else if (e->spring == "bridge")
+            viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0.9, 0, 0));
+          else if (e->spring == "boundary")
+            viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0, 0.9));
+        }
+      }
+
+    }
+
+    else if (display_mode == 3) { // halfedge
+
+      // halfedge
+//      for (auto f : faces) {
+//        Halfedge* h = f->halfedge;
+//
+//        Eigen::RowVector3d  p = (h->node->pos + h->next->node->pos + h->prev->node->pos) / 3;
+//        viewer.data().add_label(p, to_string(f->idx));
+//      }
+
+      for (auto e : edges) {
+        Node* n_a = *e->nodes.begin();
+        Node* n_b = *next(e->nodes.begin(), 1);
+
+        viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0.9, 0));
+      }
+
+      if (type_focus == "node") {
+        viewer.data().add_points(nodes[idx_focus]->pos, Eigen::RowVector3d(0.5, 0.5, 0.5));
+      }
+      else if (type_focus == "edge") {
+        viewer.data().add_points(edges[idx_focus]->get_centroid(), Eigen::RowVector3d(0.5, 0.5, 0.5));
+      }
+      else if (type_focus == "face") {
+        viewer.data().add_points(faces[idx_focus]->get_centroid(), Eigen::RowVector3d(0.5, 0.5, 0.5));
+      }
+      else if (type_focus == "halfedge") {
+        viewer.data().add_points(halfedges[idx_focus]->edge->get_centroid(), Eigen::RowVector3d(0.5, 0.5, 0.5));
+        viewer.data().add_points(halfedges[idx_focus]->node->pos, Eigen::RowVector3d(0.5, 0.5, 0.5));
+      }
+
+
+    }
 
   };
 
@@ -137,7 +219,7 @@ int main(int argc, char **argv) {
       Node *n_prev = n;
       for (int i = 1; i <= num_insert; i++) {
         Node *n_new = new Node();
-        n_new->idx = graph.size();
+        n_new->idx = nodes.size();
         n_new->pos = n->pos + vec * t_step * i;
         n_new->pos_origin = n->pos + vec * t_step * i;
         n_new->idx_iso = n->idx_iso;
@@ -146,10 +228,224 @@ int main(int argc, char **argv) {
         n_new->left->right = n_new;
         n_new->right->left = n_new;
         n_prev = n_new;
-        graph.push_back(n_new);
+        nodes.push_back(n_new);
+      }
+    }
+  };
+
+  auto add_triangle = [&](Node* n_a, Node* n_b, Node* n_c) {
+    Edge* e_ab = new Edge();
+    Edge* e_bc = new Edge();
+    Edge* e_ca = new Edge();
+    e_ab->nodes.emplace(n_a);
+    e_ab->nodes.emplace(n_b);
+    e_bc->nodes.emplace(n_b);
+    e_bc->nodes.emplace(n_c);
+    e_ca->nodes.emplace(n_c);
+    e_ca->nodes.emplace(n_a);
+
+    e_ab->idx = edges.size();
+    edges.push_back(e_ab);
+    e_bc->idx = edges.size();
+    edges.push_back(e_bc);
+    e_ca->idx = edges.size();
+    edges.push_back(e_ca);
+
+    n_a->edges.emplace(e_ab);
+    n_a->edges.emplace(e_ca);
+    n_b->edges.emplace(e_ab);
+    n_b->edges.emplace(e_bc);
+    n_c->edges.emplace(e_bc);
+    n_c->edges.emplace(e_ca);
+  };
+
+  auto add_edge = [&](Node* n_a, Node* n_b, string type) {
+    Edge* e = new Edge();
+
+    e->nodes.emplace(n_a);
+    e->nodes.emplace(n_b);
+
+    for (auto ee : n_a->edges) {
+      if (ee->nodes == e->nodes) {
+        return 0;
       }
     }
 
+    if (n_a == n_b) cout<<type<<endl;
+
+    e->spring = type;
+    e->idx = edges.size();
+    edges.push_back(e);
+
+    n_a->edges.emplace(e);
+    n_b->edges.emplace(e);
+  };
+
+  auto get_edge = [&](Node* n_a, Node* n_b) {
+    set<Node*> nodes_tmp;
+    nodes_tmp.emplace(n_a);
+    nodes_tmp.emplace(n_b);
+    for (auto e : edges) {
+      if (e->nodes == nodes_tmp) {
+        return e;
+      }
+    }
+    Edge* ee = new Edge();
+    return ee;
+    cerr<<"edge not found: "<<n_a->idx<<" "<<n_b->idx<<endl;
+  };
+
+  auto find_the_other_face = [&](Node* n_a, Node* n_b, vector<Node*>* ns_triplet, vector<Edge*>* es_triplet) {
+
+    cout<<"finding: "<<n_a->idx<< " "<<n_b->idx<<endl;
+
+    Edge* e_c;
+    for (auto e : edges) {
+      if (e->nodes == set<Node*>{n_a, n_b}) {
+        e_c = e;
+        break;
+      }
+    }
+
+    if (e_c->halfedge) {
+      if (e_c->halfedge->twin) {
+        return false;
+      }
+    }
+
+    set<Node*> ns;
+    int n_faces_found = 0;
+    for (auto e_a : n_a->edges) {
+      ns = e_a->nodes;
+      ns.erase(n_a);
+      Node* nn_a = *ns.begin();
+      for (auto e_b : n_b->edges) {
+        ns = e_b->nodes;
+        ns.erase(n_b);
+        Node* nn_b = *ns.begin();
+        if (nn_a == nn_b) { // find a face
+          if (e_a->halfedge and e_b->halfedge) { // face already exists
+            Halfedge* h_a = e_a->halfedge;
+            Halfedge* h_b = e_b->halfedge;
+            if (h_a->face == h_b->face) {
+              n_faces_found++;
+              if (n_faces_found == 2) return false;
+              continue;
+            }
+            else if (h_a->twin and h_a->twin->face == h_b->face) {
+              n_faces_found++;
+              if (n_faces_found == 2) return false;
+              continue;
+            }
+            else if (h_b->twin and h_a->face == h_b->face) {
+              n_faces_found++;
+              if (n_faces_found == 2) return false;
+              continue;
+            }
+            else if (h_b->twin and h_a->twin and h_a->twin->face == h_b->twin->face ) {
+              n_faces_found++;
+              if (n_faces_found == 2) return false;
+              continue;
+            }
+          }
+
+          (*ns_triplet)[0] = n_a;
+          (*ns_triplet)[1] = n_b;
+          (*ns_triplet)[2] = nn_a;
+          (*es_triplet)[0] = e_c;
+          (*es_triplet)[1] = e_b;
+          (*es_triplet)[2] = e_a;
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  function<bool (vector<Edge*>, vector<Node*>)> complete_face = [&](vector<Edge*> es, vector<Node*> ns) {
+    Face* f = new Face();
+    Halfedge* h_a = new Halfedge();
+    Halfedge* h_b = new Halfedge();
+    Halfedge* h_c = new Halfedge();
+
+    f->idx = faces.size();
+    cout<<"face_idx: "<<f->idx<<" "<<ns[0]->idx<<" "<<ns[1]->idx<<" "<<ns[2]->idx<<endl;
+    faces.emplace_back(f);
+    f->halfedge = h_a;
+
+    h_a->idx = halfedges.size();
+    halfedges.emplace_back(h_a);
+    h_a->node = ns[0];
+    h_a->edge = es[0];
+    h_a->face = f;
+    h_a->prev = h_c;
+    h_a->next = h_b;
+    if (es[0]->halfedge) {
+      h_a->twin = es[0]->halfedge;
+      h_a->twin->twin = h_a;
+    }
+
+    h_b->idx = halfedges.size();
+    halfedges.emplace_back(h_b);
+    h_b->node = ns[1];
+    h_b->edge = es[1];
+    h_b->face = f;
+    h_b->prev = h_a;
+    h_b->next = h_c;
+    if (es[1]->halfedge) {
+      h_b->twin = es[1]->halfedge;
+      h_b->twin->twin = h_b;
+    }
+
+    h_c->idx = halfedges.size();
+    halfedges.emplace_back(h_c);
+    h_c->node = ns[2];
+    h_c->edge = es[2];
+    h_c->face = f;
+    h_c->prev = h_b;
+    h_c->next = h_a;
+    if (es[2]->halfedge) {
+      h_c->twin = es[2]->halfedge;
+      h_c->twin->twin = h_c;
+    }
+
+    es[0]->halfedge = h_a;
+    es[1]->halfedge = h_b;
+    es[2]->halfedge = h_c;
+
+    ns[0]->halfedge = h_a;
+    ns[1]->halfedge = h_b;
+    ns[2]->halfedge = h_c;
+
+    // search h_a->twin->f, h_b->twin->f, h_c->twin->f
+    vector<Node*> ns_triplet = {nullptr, nullptr, nullptr};
+    vector<Edge*> es_triplet = {nullptr, nullptr, nullptr};
+
+    if (find_the_other_face(h_a->node, h_c->node, &ns_triplet, &es_triplet)) {
+      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos)/3,
+                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos)/3,
+                               Eigen::RowVector3d(0.9,0.9,0)
+      );
+      complete_face(es_triplet, ns_triplet);
+    }
+
+    if (find_the_other_face(h_c->node, h_b->node, &ns_triplet, &es_triplet)) {
+      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos)/3,
+                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos)/3,
+                               Eigen::RowVector3d(0,0.9,0.9)
+      );
+      complete_face(es_triplet, ns_triplet);
+    }
+    if (find_the_other_face(h_b->node, h_a->node, &ns_triplet, &es_triplet)) {
+      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos)/3,
+                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos)/3,
+                               Eigen::RowVector3d(0.9,0,0.9)
+      );
+      complete_face(es_triplet, ns_triplet);
+    }
+
+    return true;
   };
 
   //////////////////////////////////// init ////////////////////////////////////
@@ -162,9 +458,9 @@ int main(int argc, char **argv) {
     string line;
     while (getline(ifile, line, '\n')) {
       auto n = new Node();
-      graph.push_back(n);
-
+      nodes.push_back(n);
     }
+
     ifile.clear();
     ifile.seekg(0, ios::beg);
 
@@ -172,16 +468,16 @@ int main(int argc, char **argv) {
       vector<string> items;
       boost::split(items, line, boost::is_any_of(" "), boost::token_compress_on);
       int idx = stoi(items[0]);
-      Node *n = graph[idx];
+      Node *n = nodes[idx];
       n->idx = stoi(items[0]); // -1: not defined; -1: inserted
       n->pos = Eigen::RowVector3d(stof(items[1]), stof(items[2]), stof(items[3]));
       n->pos_origin = Eigen::RowVector3d(stof(items[1]), stof(items[2]), stof(items[3]));
       if (items[4] != "-1") n->idx_iso = stoi(items[4]);
       if (items[5] != "-1") n->idx_grad = stoi(items[5]);
-      if (items[6] != "-1") n->right = graph[stoi(items[6])];
-      if (items[7] != "-1") n->left = graph[stoi(items[7])];
-      if (items[8] != "-1") n->up = graph[stoi(items[8])];
-      if (items[9] != "-1") n->down = graph[stoi(items[9])];
+      if (items[6] != "-1") n->right = nodes[stoi(items[6])];
+      if (items[7] != "-1") n->left = nodes[stoi(items[7])];
+      if (items[8] != "-1") n->up = nodes[stoi(items[8])];
+      if (items[9] != "-1") n->down = nodes[stoi(items[9])];
     }
   }
 
@@ -190,7 +486,7 @@ int main(int argc, char **argv) {
     float sum_len_grad_seg = 0;
     int n_iso_seg = 0;
     int n_grad_seg = 0;
-    for (auto n : graph ) {
+    for (auto n : nodes ) {
       if (n->right) sum_len_iso_seg += (n->pos - n->right->pos).norm();
       if (n->up) sum_len_grad_seg += (n->pos - n->up->pos).norm();
       n_iso_seg ++; n_grad_seg++;
@@ -198,7 +494,7 @@ int main(int argc, char **argv) {
     }
     avg_len_iso_edge = sum_len_iso_seg / n_iso_seg;
     avg_len_grad_edge = sum_len_grad_seg / n_grad_seg;
-    cout<<"avg_iso: "<<avg_len_iso_edge<<" "<<"avg_grad: "<<avg_len_grad_edge<<"graph_size: "<<graph.size()<<endl;
+    cout<<"avg_iso: "<<avg_len_iso_edge<<" "<<"avg_grad: "<<avg_len_grad_edge<<"graph_size: "<<nodes.size()<<endl;
   }
 
   { // visualizer
@@ -208,7 +504,6 @@ int main(int argc, char **argv) {
 //    redraw();
   }
 
-
   // callbacks
   menu.callback_draw_viewer_menu = [&]()
   {
@@ -216,9 +511,18 @@ int main(int argc, char **argv) {
     {
       ImGui::InputFloat("iso_spacing", &iso_spacing);
       ImGui::InputFloat("grad_spacing", &grad_spacing);
-      if (ImGui::InputInt("selected_node", &idx_n_selected)) {
+      if (ImGui::InputInt("selected_node", &idx_focus)) {
         redraw();
       }
+
+      if (ImGui::RadioButton("graph", &display_mode, 0) or
+        ImGui::RadioButton("edges", &display_mode, 1) or
+        ImGui::RadioButton("nodes", &display_mode, 2) or
+        ImGui::RadioButton("halfedge", &display_mode, 3)
+      ) {
+        redraw();
+      }
+
       if (ImGui::Checkbox("label", &display_label)) {
         redraw();
       }
@@ -230,19 +534,16 @@ int main(int argc, char **argv) {
         redraw();
       }
       if (ImGui::Button("subdivide isolines")) {
-        for (auto n : graph) {
+        for (auto n : nodes) {
           subdivide_edge(n);
 
         }
-        cout<<"Done. avg_iso: "<<avg_len_iso_edge<<" "<<"avg_grad: "<<avg_len_grad_edge<<"graph_size: "<<graph.size()<<endl;
+        cout<<"Done. avg_iso: "<<avg_len_iso_edge<<" "<<"avg_grad: "<<avg_len_grad_edge<<"graph_size: "<<nodes.size()<<endl;
         redraw();
       }
 
       if (ImGui::Button("flatten")) {
-        vector<int> test;
-        cout<<test[2]<<endl;
       }
-
 
       if (ImGui::Button("try mesh")) {
         viewer.data().clear();
@@ -265,11 +566,8 @@ int main(int argc, char **argv) {
 //        igl::per_face_normals(V, F, FN);
       }
 
-
       if (ImGui::Button("triangulate")) {
-
-        int iii = 0;
-        for (auto n : graph) {
+        for (auto n : nodes) {
 //        {
 //          Node* n = graph[idx_n_selected];
 
@@ -286,37 +584,50 @@ int main(int argc, char **argv) {
             }
 
             if (n_right->up == n_up_right) {  // in a quad
-              Node* n_d = n;
-              Node* n_u = n->up;
+              Node *n_d = n;
+              Node *n_u = n->up;
               bool right_most = false;
-              // keep moving towards the right edge
+              // keep moving towards the right edge, insert edge every time
               while (true) {
+                add_edge(n_d, n_u, "bridge");
+
+                Node *n_c;
                 if (n_u == n_up_right) {
+                  n_c = n_d->right;
+                  add_edge(n_d, n_c, "stretch");
+                  add_edge(n_u, n_c, "bridge");
                   if (n_d->right == n_right) {
                     right_most = true;
-                  }
-                  else {
-                    n_d = n_d->right;
-                  }
-                }
-                else if (n_d == n_right) {
-                  if (n_u->right == n_up_right) {
-                    right_most = true;
-                  }
-                  else {
-                    n_u = n_u->right;
-                  }
-                }
-                else {
-                  Eigen::RowVector3d vec_d = n_u->right->pos - n_d->pos;
-                  Eigen::RowVector3d vec_u = n_d->right->pos - n_u->pos;
-
-                  if ( (vec_d.norm() < vec_u.norm()) or (n_d == n_right) ) {  // connect the shorter diagonal
-                    n_u = n_u->right;
                   } else {
                     n_d = n_d->right;
                   }
+                } else if (n_d == n_right) {
+                  n_c = n_u->right;
+                  add_edge(n_c, n_u, "stretch");
+                  add_edge(n_c, n_d, "bridge");
+                  if (n_u->right == n_up_right) {
+                    right_most = true;
+                  } else {
+                    n_u = n_u->right;
+                  }
+                } else {
+                  Eigen::RowVector3d vec_d = n_u->right->pos - n_d->pos;
+                  Eigen::RowVector3d vec_u = n_d->right->pos - n_u->pos;
+
+                  if ((vec_d.norm() < vec_u.norm()) or (n_d == n_right)) {  // connect the shorter diagonal
+                    n_c = n_u->right;
+                    add_edge(n_c, n_u, "stretch");
+                    add_edge(n_c, n_d, "bridge");
+                    n_u = n_u->right;
+                  } else {
+                    n_c = n_d->right;
+                    add_edge(n_c, n_u, "bridge");
+                    add_edge(n_c, n_d, "stretch");
+                    n_d = n_d->right;
+                  }
                 }
+
+                viewer.data().add_edges(n_u->pos, n_d->pos, Eigen::RowVector3d(0.9, 0, 0));
 
                 if (right_most) {
                   break;
@@ -328,9 +639,9 @@ int main(int argc, char **argv) {
 
           // detect top boundary
           if (!n->up) { // detect the up boundary
-            vector<Node*> boundary_top;
+            vector<Node *> boundary_top;
             bool is_boundary = true;
-            Node* n_iter = n;
+            Node *n_iter = n;
             while (true) {
               if (n_iter->up) {
                 is_boundary = false;
@@ -353,27 +664,28 @@ int main(int argc, char **argv) {
               }
               center_pos /= boundary_top.size();
 
-              Node* n_center = new Node();
-              n_center->idx = graph.size();
+              Node *n_center = new Node();
+              n_center->idx = nodes.size();
               n_center->pos = center_pos;
               n_center->pos_origin = center_pos;
               n_center->idx_iso = -1; // TODO: indexing for inserted isoline
               n_center->idx_grad = -1;
+              nodes.push_back(n_center);
 
-              graph.push_back(n_center);
-            }
-
-            else {
+              for (auto nb : boundary_top) {
+                add_edge(nb, n_center, "bridge");
+              }
+            } else {
               // TODO: two iso lines sharing a hole but no node has a downward connection
             }
           }
 
           // detect holes
           if (!n->down) { // detecting the bottom boundary
-            vector<Node*> boundary_down;
+            vector<Node *> boundary_down;
             bool is_boundary = true;  // not used yet
             bool is_bottom_boundary = true;
-            Node* n_iter = n;
+            Node *n_iter = n;
             bool is_upper = true;
             set<int> ids_iso;
 
@@ -386,19 +698,16 @@ int main(int argc, char **argv) {
                   n_iter = n_iter->right;
                   is_bottom_boundary = false;
                   is_upper = false;
-                }
-                else if (n_iter->left) {
+                } else if (n_iter->left) {
                   n_iter = n_iter->left;
                 }
-              }
-              else {
+              } else {
                 if (n_iter->up) {
                   n_iter = n_iter->up;
                   boundary_down.push_back(n_iter);
                   n_iter = n_iter->left;
                   is_upper = true;
-                }
-                else if (n_iter->right) {
+                } else if (n_iter->right) {
                   n_iter = n_iter->right;
                 }
               }
@@ -411,7 +720,7 @@ int main(int argc, char **argv) {
             }
 
             // not bottom, not same path
-            if ( (is_boundary) and (!is_bottom_boundary) and (ids_iso.size() > 2 ) ) {
+            if ((is_boundary) and (!is_bottom_boundary) and (ids_iso.size() > 2)) {
               // TODO: skeletonize the saddle, here using center point temporally
 
               Eigen::RowVector3d center_pos = Eigen::RowVector3d(0, 0, 0);
@@ -421,64 +730,153 @@ int main(int argc, char **argv) {
               }
               center_pos /= boundary_down.size();
 
-              for (auto n : boundary_down) {
-                viewer.data().add_edges(center_pos, n->pos, Eigen::RowVector3d(0.9, 0, 0));
-              }
+              Node *n_center = new Node();
+              n_center->idx = nodes.size();
+              n_center->pos = center_pos;
+              n_center->pos_origin = center_pos;
+              n_center->idx_iso = -1;
+              n_center->idx_grad = -1;
+              nodes.push_back(n_center);
 
+              for (auto n : boundary_down) {
+                add_edge(n, n_center, "bridge");
+              }
+            } else if (is_bottom_boundary) {
+              for (int i = 0; i < boundary_down.size(); i++) {
+                int j = (i + 1) % boundary_down.size();
+                Node *n_a = boundary_down[i];
+                Node *n_b = boundary_down[j];
+                viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0, 0.9));
+                Edge *e = get_edge(n_a, n_b);
+                if (e->idx != -1) e->spring = "boundary";
+              }
             }
           }
 
-          if (!n->right) {cerr<<n->idx<<" has no right node."<<endl;}
+          if (!n->right) { cerr << n->idx << " has no right node." << endl; }
+        }
+      }
+
+      if (ImGui::Button("halfedgize")) {// create half edge mesh
+        vector<Node *> ns_triplet;
+        vector<Edge *> es_triplet;
+        // find first triangle
+        cout<<"looking for first triangle"<<endl;
+        for (Node *n_a : nodes) {
+          cout<<"n_a: "<<n_a->idx<<endl;
+          Node *n_b = n_a->up;
+          if (!n_b) continue;
+          cout<<"n_b: "<<n_b->idx<<endl;
+
+          // prepare ns_triplet
+          ns_triplet = {n_a, n_b};
+          set<Node *> ns_tuple_0, ns_tuple_1, ns_tuple_2;
+          ns_tuple_0 = {n_a, n_b};
+          if (n_a->left) ns_tuple_1 = {n_b, n_a->left};
+          else continue;
+          if (n_b->left) ns_tuple_2 = {n_a, n_b->left};
+          else continue;
+          bool edge_exist = false;
+          for (auto e : edges) {
+            if (e->nodes == ns_tuple_1) {
+              ns_triplet.emplace_back(n_a->left);
+              ns_tuple_2 = {n_a, n_a->left};
+              edge_exist = true;
+              break;
+            } else if (e->nodes == ns_tuple_2) {
+              ns_triplet.emplace_back(n_b->left);
+              ns_tuple_1 = {n_b, n_b->left};
+              edge_exist = true;
+              break;
+            }
+          }
+
+          // prepare es_triplet
+          es_triplet = {nullptr, nullptr, nullptr};
+          for (auto e : edges) {
+            if (e->nodes == ns_tuple_0) es_triplet[0] = e;
+            if (e->nodes == ns_tuple_1) es_triplet[1] = e;
+            if (e->nodes == ns_tuple_2) es_triplet[2] = e;
+          }
+
+          if (!edge_exist) continue;
         }
 
-        // draw edges from halfedge mesh
-        for (auto ei = edges.begin(); ei != edges.end(); ei++) {
-          Edge* e = ei->second;
-          Node* n_a = e->halfedge->node;
-          if (e->halfedge->twin) {
-            Node *n_b = e->halfedge->twin->node;
-            viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0.9, 0, 0));
-          }
-          else {
-
-          }
-        }
+        // function: bfs_halfedge_mesh iterate through whole mesh
+        // given triplets, output, complete a face
+        complete_face(es_triplet, ns_triplet);
 
       }
 
     }
   };
 
-
   viewer.callback_key_down =
     [&](igl::opengl::glfw::Viewer& viewer, int key, int mod)->bool
     {
-      if (key == GLFW_KEY_LEFT)
-        if (graph[idx_n_selected]->left) {
-          idx_n_selected = graph[idx_n_selected]->left->idx;
-          redraw();
-        }
+      if (type_focus == "node") {
+        if (key == GLFW_KEY_LEFT)
+          if (nodes[idx_focus]->left) {
+            idx_focus = nodes[idx_focus]->left->idx;
+          }
+        if (key == GLFW_KEY_RIGHT)
+          if (nodes[idx_focus]->right) {
+            idx_focus = nodes[idx_focus]->right->idx;
+          }
+        if (key == GLFW_KEY_UP)
+          if (nodes[idx_focus]->up) {
+            idx_focus = nodes[idx_focus]->up->idx;
+          }
+        if (key == GLFW_KEY_DOWN)
+          if (nodes[idx_focus]->down) {
+            idx_focus = nodes[idx_focus]->down->idx;
+          }
+      }
 
-      if (key == GLFW_KEY_RIGHT)
-        if (graph[idx_n_selected]->right) {
-          idx_n_selected = graph[idx_n_selected]->right->idx;
-          redraw();
+      if (type_focus == "halfedge") {
+        Halfedge* h = halfedges[idx_focus];
+        if (key == GLFW_KEY_N) {
+          idx_focus = h->next->idx;
         }
-      if (key == GLFW_KEY_UP)
-        if (graph[idx_n_selected]->up) {
-          idx_n_selected = graph[idx_n_selected]->up->idx;
-          redraw();
+        else if (key == GLFW_KEY_P) {
+          idx_focus = h->prev->idx;
         }
+        else if (key == GLFW_KEY_T) {
+          if (h->twin)
+            idx_focus = h->twin->idx;
+          else
+            cout<<"no twin"<<endl;
+        }
+        else if (key == GLFW_KEY_V) {
+          type_focus = "node";
+          idx_focus = h->node->idx;
+        }
+        else if (key == GLFW_KEY_E) {
+          type_focus = "edge";
+          idx_focus = h->edge->idx;
+        }
+        else if (key == GLFW_KEY_F) {
+          type_focus = "face";
+          idx_focus = h->face->idx;
+        }
+      }
 
-      if (key == GLFW_KEY_DOWN)
-        if (graph[idx_n_selected]->down) {
-          idx_n_selected = graph[idx_n_selected]->down->idx;
-          redraw();
-
+      if (type_focus != "halfedge" and key == GLFW_KEY_H) {
+        if (type_focus == "node") {
+          idx_focus = nodes[idx_focus]->halfedge->idx;
         }
+        else if (type_focus == "edge") {
+          idx_focus = edges[idx_focus]->halfedge->idx;
+        }
+        else if (type_focus == "face") {
+          idx_focus = faces[idx_focus]->halfedge->idx;
+        }
+        type_focus = "halfedge";
+      }
+
+      redraw();
+
     };
-
-
 
   viewer.callback_mouse_down =
     [&](igl::opengl::glfw::Viewer& viewer, int, int)->bool
