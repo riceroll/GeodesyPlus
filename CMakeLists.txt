@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.1)
 project(remesher)
 
+#Versioning
+set(SHAPEOP_VERSION_MAJOR 0)
+set(SHAPEOP_VERSION_MINOR 1)
+set(SHAPEOP_VERSION_PATCH 0)
+set(SHAPEOP_VERSION_STRING ${SHAPEOP_VERSION_MAJOR}.${SHAPEOP_VERSION_MINOR}.${SHAPEOP_VERSION_PATCH})
+
+
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -30,6 +37,55 @@ option(LIBIGL_WITH_XML               "Use XML"            OFF)
 
 find_package(LIBIGL REQUIRED QUIET)
 
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang") #Tests for Clang and AppleClang which is defined in CMake 3.0 and higher
+  message("Clang.")
+  set(CMAKE_CXX_FLAGS "-std=c++11 -stdlib=libc++ -Wall -g")
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+  #    set(CMAKE_CXX_FLAGS_DEBUG "-g")
+  add_definitions(-DSHAPEOP_CLANG)
+  add_definitions(-DSHAPEOP_EXPORT)
+  set(OPENMP OFF CACHE BOOL "OpenMP")
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+  message("GCC.")
+  set(CMAKE_CXX_FLAGS "-std=c++11 -Wall -g")
+  set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG")
+  #    set(CMAKE_CXX_FLAGS_DEBUG "-g")
+  add_definitions(-DSHAPEOP_GCC)
+  add_definitions(-DSHAPEOP_EXPORT)
+  set(OPENMP ON CACHE BOOL "OpenMP")
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
+  message("ICC.")
+  if(WIN32)
+    set(CMAKE_CXX_FLAGS "/Qstd=c++11")
+    set(CMAKE_CXX_FLAGS_RELEASE "/O3 /DNDEBUG")
+    add_definitions(/DSHAPEOP_ICC)
+    add_definitions(/DSHAPEOP_EXPORT)
+  else()
+    set(CMAKE_CXX_FLAGS "-std=c++11")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+    add_definitions(-DSHAPEOP_ICC)
+    add_definitions(-DSHAPEOP_EXPORT)
+  endif()
+  set(OPENMP OFF CACHE BOOL "OpenMP")
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+  message("MSVC.")
+  set(CMAKE_CXX_FLAGS_DEBUG "/MTd")
+  set(CMAKE_CXX_FLAGS_RELEASE "/MT /Ox /Ot /fp:fast /GS- /GL /DNDEBUG")
+  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG /INCREMENTAL:NO /OPT:REF")
+  add_definitions(/DSHAPEOP_MSVC)
+  add_definitions(/DSHAPEOP_EXPORT)
+  set(OPENMP ON CACHE BOOL "OpenMP")
+else()
+  message( FATAL_ERROR "CXX compiler not recognized. CMake will quit." )
+endif()
+
+include_directories("./libShapeOp/src/")
+include_directories("./libShapeOp/api/")
+
+add_subdirectory(libShapeOp)
+
+
 # Add your project files
 file(GLOB SRCFILES *.cpp)
 add_executable(${PROJECT_NAME} ${SRCFILES})
@@ -41,3 +97,4 @@ target_include_directories(${PROJECT_NAME} PUBLIC ./shape-op/)
 #target_include_directories(${PROJECT_NAME} PUBLIC ../External/spectra/include) #for spectra
 #link_directories(/usr/local/Cellar/cgal/4.9.1/lib/)
 target_link_libraries(${PROJECT_NAME} igl::core igl::opengl_glfw_imgui)
+target_link_libraries(${PROJECT_NAME} ShapeOp)
