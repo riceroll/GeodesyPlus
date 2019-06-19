@@ -22,7 +22,6 @@
 
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
-
 #include <Eigen/Dense>
 
 #include "Solver.h"
@@ -58,6 +57,7 @@ struct Edge {
   set<Node*> nodes;
   Halfedge* halfedge = nullptr;
   string spring = "stretch";      // stretch,
+  float rest_len;
   Eigen::RowVector3d centroid() {
     return ((*nodes.begin())->pos + (*next(nodes.begin(), 1))->pos) / 2;
   }
@@ -78,7 +78,6 @@ struct Halfedge {
     return vec;
   }
   float length() {
-    // test
     return (this->node->pos - this->twin->node->pos).norm();
   }
 };
@@ -97,13 +96,11 @@ struct Face {
   }
 
   Eigen::RowVector3d normal() {
-    // test
     Eigen::RowVector3d n = this->halfedge->vector().cross(this->halfedge->next->vector());
     n.normalize();
     return n;
   }
 };
-
 
 int main(int argc, char **argv) {
   Eigen::MatrixXd V;  // n_vertices * 3d
@@ -112,6 +109,9 @@ int main(int argc, char **argv) {
   vector<Edge*> edges;
   vector<Face*> faces;
   vector<Halfedge*> halfedges;
+  vector<vector<Node *>> boundaries_top;
+  vector<vector<Node *>> boundaries_bottom;
+  vector<vector<Node *>> boundaries_saddle;
 
   ShapeOp::Solver* solver = new ShapeOp::Solver();
   Eigen::MatrixXd points;
@@ -126,13 +126,19 @@ int main(int argc, char **argv) {
   float iso_spacing = 1;
   float grad_spacing = 1;
   bool display_label = false;
-  int display_mode = 0; // 0: graph, 1: edges, 2: nodes
+  int display_mode = 1; // 0: graph, 1: halfedges
+  int label_type = 0; // 0: node, 1: isoline, 2: grad line,   3: spring: 1: boundary
 
-  float damping = 100;
-  float w_closeness = 1000;
-  float w_stretch = 1.0;
+  float damping = 100.0;
+  float w_closeness = 1.0;
+  float w_stretch = 100.0;
   float w_bridge = 100.0;
-  int n_iter = 100;
+  float w_bending = 10.0;
+  float w_plane = 10.0;
+  float w_angle_stretch = 10.0;
+  float w_angle_shear = 0.0;
+  float w_spreading = 0.0;
+  int n_iter = 1;
 
   Eigen::RowVector3d color_black = Eigen::RowVector3d(0, 0, 0);
   Eigen::RowVector3d color_red = Eigen::RowVector3d(0.8, 0.3, 0.3);
@@ -141,15 +147,33 @@ int main(int argc, char **argv) {
 
   auto redraw = [&]() {
     // 0: graph, 1: edges, 2: nodes
-    viewer.data().clear();
-    viewer.data().points = Eigen::MatrixXd(0, 6);
-    viewer.data().lines = Eigen::MatrixXd(0, 9);
-    viewer.data().labels_positions = Eigen::MatrixXd(0, 3);
+//    viewer.data().clear();  // this line causes bug
+
+    viewer.data().V.resize(0,3);
+    viewer.data().F.resize(0,3);
+    viewer.data().points.resize(0, 6);
+    viewer.data().lines.resize(0, 9);
+    viewer.data().labels_positions.resize(0, 3);
     viewer.data().labels_strings.clear();
 
     if (display_label) {
       for (auto n : nodes) {
-        viewer.data().add_label(n->pos, to_string(n->idx));
+        if (label_type == 0)
+          viewer.data().add_label(n->pos, to_string(n->idx));
+        else if (label_type == 1)
+          viewer.data().add_label(n->pos, to_string(n->idx_iso));
+        else if (label_type == 2)
+          viewer.data().add_label(n->pos, to_string(n->idx_grad));
+      }
+      for (auto e : edges) {
+        if (label_type != 3)
+          viewer.data().add_label(e->centroid(), to_string(e->idx));
+        else if (label_type == 3) {
+          if (e->spring == "boundary")
+            viewer.data().add_label(e->centroid(), to_string(1));
+          else
+            viewer.data().add_label(e->centroid(), to_string(0));
+        }
       }
     }
 
@@ -168,40 +192,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    else if (display_mode == 1) { // edges
-      for (auto e : edges) {
-        Node* n_a = *e->nodes.begin();
-        Node* n_b = *next(e->nodes.begin(), 1);
-
-        if (e->spring == "stretch")
-          viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0.9, 0));
-        else if (e->spring == "bridge")
-          viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0.9, 0, 0));
-        else if (e->spring == "boundary")
-          viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0, 0.9));
-      }
-
-    }
-
-    else if (display_mode == 2){  // nodes
-
-      for (auto n : nodes) {
-        for (auto e : n->edges) {
-          Node* n_a = *e->nodes.begin();
-          Node* n_b = *next(e->nodes.begin(), 1);
-
-          if (e->spring == "stretch")
-            viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0.9, 0));
-          else if (e->spring == "bridge")
-            viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0.9, 0, 0));
-          else if (e->spring == "boundary")
-            viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0, 0.9));
-        }
-      }
-
-    }
-
-    else if (display_mode == 3) { // halfedge
+    else if (display_mode == 1) { // halfedge
 
       for (auto e : edges) {
         Node* n_a = *e->nodes.begin();
@@ -229,7 +220,6 @@ int main(int argc, char **argv) {
         viewer.data().add_points(halfedges[idx_focus]->edge->centroid(), color_black);
         viewer.data().add_points(halfedges[idx_focus]->node->pos, color_black);
       }
-
     }
 
   };
@@ -292,11 +282,11 @@ int main(int argc, char **argv) {
 
     for (auto ee : n_a->edges) {
       if (ee->nodes == e->nodes) {
-        return 0;
+        return ee;
       }
     }
 
-    if (n_a == n_b) cout<<type<<endl;
+    if (n_a == n_b) cout<<"n_a ==n_b: "<<type<<endl;
 
     e->spring = type;
     e->idx = edges.size();
@@ -304,6 +294,8 @@ int main(int argc, char **argv) {
 
     n_a->edges.emplace(e);
     n_b->edges.emplace(e);
+
+    return e;
   };
 
   auto get_edge = [&](Node* n_a, Node* n_b) {
@@ -315,8 +307,6 @@ int main(int argc, char **argv) {
         return e;
       }
     }
-    Edge* ee = new Edge();
-    return ee;
     cerr<<"edge not found: "<<n_a->idx<<" "<<n_b->idx<<endl;
   };
 
@@ -346,7 +336,8 @@ int main(int argc, char **argv) {
         ns = e_b->nodes;
         ns.erase(n_b);
         Node* nn_b = *ns.begin();
-        if (nn_a == nn_b) { // find a face
+
+        if (nn_a == nn_b) { // find a face, tri: n_a - n_b - nn_a/b
           if (e_a->halfedge and e_b->halfedge) { // face already exists
             Halfedge* h_a = e_a->halfedge;
             Halfedge* h_b = e_b->halfedge;
@@ -512,7 +503,6 @@ int main(int argc, char **argv) {
       if (n->right) sum_len_iso_seg += (n->pos - n->right->pos).norm();
       if (n->up) sum_len_grad_seg += (n->pos - n->up->pos).norm();
       n_iso_seg ++; n_grad_seg++;
-
     }
     avg_len_iso_edge = sum_len_iso_seg / n_iso_seg;
     avg_len_grad_edge = sum_len_grad_seg / n_grad_seg;
@@ -523,7 +513,6 @@ int main(int argc, char **argv) {
     viewer.core.background_color = Eigen::Vector4f(1, 1, 1, 1.);
     viewer.core.camera_base_zoom = 0.01;
     viewer.plugins.push_back(&menu);
-//    redraw();
   }
 
   // callbacks
@@ -533,15 +522,31 @@ int main(int argc, char **argv) {
     {
       ImGui::InputFloat("iso_spacing", &iso_spacing);
       ImGui::InputFloat("grad_spacing", &grad_spacing);
+      ImGui::InputFloat("w_closeness", &w_closeness);
+      ImGui::InputFloat("w_stretch", &w_stretch);
+      ImGui::InputFloat("w_bridge", &w_bridge);
+      ImGui::InputFloat("w_bending", &w_bending);
+      ImGui::InputFloat("w_plane", &w_plane);
+      ImGui::InputFloat("w_angle_stretch", &w_angle_stretch);
+      ImGui::InputFloat("w_angle_shear", &w_angle_shear);
+      ImGui::InputFloat("w_spreading", &w_spreading);
+      ImGui::InputInt("n_iter", &n_iter);
+
       if (ImGui::InputInt("selected_node", &idx_focus)) {
         redraw();
       }
 
       if (ImGui::RadioButton("graph", &display_mode, 0) or
-        ImGui::RadioButton("edges", &display_mode, 1) or
-        ImGui::RadioButton("nodes", &display_mode, 2) or
-        ImGui::RadioButton("halfedge", &display_mode, 3)
+        ImGui::RadioButton("halfedge", &display_mode, 1)
       ) {
+        redraw();
+      }
+
+      if (ImGui::RadioButton("node_id", &label_type, 0) or
+          ImGui::RadioButton("iso_id", &label_type, 1) or
+          ImGui::RadioButton("grad_id", &label_type, 2) or
+          ImGui::RadioButton("is_boundary", &label_type, 3)
+        ) {
         redraw();
       }
 
@@ -560,7 +565,8 @@ int main(int argc, char **argv) {
           subdivide_edge(n);
 
         }
-        cout<<"Done. avg_iso: "<<avg_len_iso_edge<<" "<<"avg_grad: "<<avg_len_grad_edge<<"graph_size: "<<nodes.size()<<endl;
+        cout<<"Done. avg_iso: "<<avg_len_iso_edge<<" "<<"avg_grad: "
+        <<avg_len_grad_edge<<"graph_size: "<<nodes.size()<<endl;
         redraw();
       }
 
@@ -591,7 +597,7 @@ int main(int argc, char **argv) {
       if (ImGui::Button("triangulate")) {
         for (auto n : nodes) {
 //        {
-//          Node* n = graph[idx_n_selected];
+//          Node* n = nodes[idx_focus];
 
           // detect quads (up right quad of each node)
           if (n->idx_grad != -1 and (n->right and n->up)) {  // original nodes in the graph, has up right
@@ -655,68 +661,81 @@ int main(int argc, char **argv) {
                   break;
                 }
               }
-
             }
           }
 
-          // detect top boundary
-          if (!n->up) { // detect the up boundary
-            vector<Node *> boundary_top;
-            bool is_boundary = true;
-            Node *n_iter = n;
-            while (true) {
-              if (n_iter->up) {
-                is_boundary = false;
-                boundary_top.clear();
 
-                break;
+          if (!n->up) {
+            bool in_boundary = false; // already in boundary
+            for (auto b : boundaries_top) {
+              for (auto n_b : b) {
+                if (n == n_b) {
+                  in_boundary = true;
+                  break;
+                }
               }
-              boundary_top.push_back(n_iter);
-
-              if (n_iter->right == n) {  // close the boundary
-                break;
-              }
-              n_iter = n_iter->right;
             }
 
-            if (is_boundary) {
-              Eigen::RowVector3d center_pos = Eigen::RowVector3d(0, 0, 0);
-              for (auto nb : boundary_top) {
-                center_pos += nb->pos;
-              }
-              center_pos /= boundary_top.size();
+            if (!in_boundary) {
+              vector<Node *> boundary_top;
+              bool is_boundary = true;
+              Node *n_iter = n;
 
-              Node *n_center = new Node();
-              n_center->idx = nodes.size();
-              n_center->pos = center_pos;
-              n_center->pos_origin = center_pos;
-              n_center->idx_iso = -1; // TODO: indexing for inserted isoline
-              n_center->idx_grad = -1;
-              nodes.push_back(n_center);
+              while (true) {  // extract the whole boundary
+                if (n_iter->up) {
+                  is_boundary = false;
+                  boundary_top.clear();
+                  break;
+                }
+                boundary_top.push_back(n_iter);
 
-              for (auto nb : boundary_top) {
-                add_edge(nb, n_center, "bridge");
+                if (n_iter->right == n) {  // close the boundary
+                  break;
+                }
+                n_iter = n_iter->right;
               }
-            } else {
-              // TODO: two iso lines sharing a hole but no node has a downward connection
+
+              if (is_boundary) {
+                Eigen::RowVector3d center_pos = Eigen::RowVector3d(0, 0, 0);
+                for (auto nb : boundary_top) {
+                  center_pos += nb->pos;
+                }
+                center_pos /= boundary_top.size();
+
+                Node *n_center = new Node();
+                n_center->idx = nodes.size();
+                n_center->pos = center_pos;
+                n_center->pos_origin = center_pos;
+                n_center->idx_iso = -1; // TODO: indexing for inserted isoline
+                n_center->idx_grad = -1;
+                nodes.push_back(n_center);
+
+                for (auto nb : boundary_top) {
+                  add_edge(nb, n_center, "bridge");
+                }
+              } else {
+                // TODO: two iso lines sharing a hole but no node has a downward connection
+              }
+
+
+              boundaries_top.push_back(boundary_top);
             }
           }
 
           // detect holes
           if (!n->down) { // detecting the bottom boundary
-            vector<Node *> boundary_down;
-            bool is_boundary = true;  // not used yet
+
+            vector<Node *> boundary_bottom;
             bool is_bottom_boundary = true;
             Node *n_iter = n;
             bool is_upper = true;
             set<int> ids_iso;
-
-            while (true) {  // searching and setting flags
+            do {  // searching the saddle path
               ids_iso.emplace(n_iter->idx_iso);
               if (is_upper) {
                 if (n_iter->down) {
                   n_iter = n_iter->down;
-                  boundary_down.push_back(n_iter);
+                  boundary_bottom.push_back(n_iter);
                   n_iter = n_iter->right;
                   is_bottom_boundary = false;
                   is_upper = false;
@@ -726,55 +745,77 @@ int main(int argc, char **argv) {
               } else {
                 if (n_iter->up) {
                   n_iter = n_iter->up;
-                  boundary_down.push_back(n_iter);
+                  boundary_bottom.push_back(n_iter);
                   n_iter = n_iter->left;
                   is_upper = true;
                 } else if (n_iter->right) {
                   n_iter = n_iter->right;
                 }
               }
+              boundary_bottom.push_back(n_iter);
+            } while (n_iter != n);
 
-              boundary_down.push_back(n_iter);
-
-              if (n_iter == n) {  // boundary closed
-                break;
-              }
-            }
-
-            // not bottom, not same path
-            if ((is_boundary) and (!is_bottom_boundary) and (ids_iso.size() > 2)) {
+            // saddle: not bottom, not same path
+            if ((!is_bottom_boundary) and (ids_iso.size() > 2)) {
               // TODO: skeletonize the saddle, here using center point temporally
 
-              Eigen::RowVector3d center_pos = Eigen::RowVector3d(0, 0, 0);
-
-              for (auto n : boundary_down) {
-                center_pos += n->pos;
+              bool in_boundary = false;
+              for (auto b : boundaries_saddle) {
+                for (auto n_b : b) {
+                  if (n == n_b) {
+                    in_boundary = true;
+                    break;
+                  }
+                }
               }
-              center_pos /= boundary_down.size();
 
-              Node *n_center = new Node();
-              n_center->idx = nodes.size();
-              n_center->pos = center_pos;
-              n_center->pos_origin = center_pos;
-              n_center->idx_iso = -1;
-              n_center->idx_grad = -1;
-              nodes.push_back(n_center);
+              if (!in_boundary) {
 
-              for (auto n : boundary_down) {
-                add_edge(n, n_center, "bridge");
+                boundaries_saddle.push_back(boundary_bottom);
+                Eigen::RowVector3d center_pos = Eigen::RowVector3d(0, 0, 0);
+
+                for (auto n : boundary_bottom) {
+                  center_pos += n->pos;
+                }
+                center_pos /= boundary_bottom.size();
+
+                Node *n_center = new Node();
+                n_center->idx = nodes.size();
+                n_center->pos = center_pos;
+                n_center->pos_origin = center_pos;
+                n_center->idx_iso = -1;
+                n_center->idx_grad = -1;
+                nodes.push_back(n_center);
+
+                for (auto n : boundary_bottom) {
+                  add_edge(n, n_center, "bridge");
+                }
               }
             }
-
             else if (is_bottom_boundary) {
-              for (int i = 0; i < boundary_down.size(); i++) {
-                int j = (i + 1) % boundary_down.size();
-                Node *n_a = boundary_down[i];
-                Node *n_b = boundary_down[j];
-                viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0, 0.9));
-                Edge *e = get_edge(n_a, n_b);
-                if (e->idx != -1) e->spring = "boundary";
+              bool in_boundary = false;
+              for (auto b : boundaries_bottom) {
+                for (auto n_b : b) {
+                  if (n == n_b) {
+                    in_boundary = true;
+                    break;
+                  }
+                }
+              }
+
+              if (!in_boundary) {
+                boundaries_bottom.push_back(boundary_bottom);
+                for (int i = 0; i < boundary_bottom.size(); i++) {
+                  int j = (i + 1) % boundary_bottom.size();
+                  Node *n_a = boundary_bottom[i];
+                  Node *n_b = boundary_bottom[j];
+                  viewer.data().add_edges(n_a->pos, n_b->pos, Eigen::RowVector3d(0, 0, 0.9));
+                  Edge *e = add_edge(n_a, n_b, "stretch");
+                  if (e->idx != -1) e->spring = "boundary"; //
+                }
               }
             }
+
           }
 
           if (!n->right) { cerr << n->idx << " has no right node." << endl; }
@@ -830,66 +871,79 @@ int main(int argc, char **argv) {
 
         // external face & boundary halfedges
         {
-          Face* f = new Face();
-          Edge* edge;
-          Edge* edge_0;
-          vector<Edge*> edges_boundary;
+          Face *f = new Face();
+          Edge *edge;
+          Edge *edge_0;
+          vector<Edge *> edges_boundary;
 
           // face
           f->is_external = true;
           f->idx = faces.size();
           faces.emplace_back(f);
 
+          bool found_boundary = false;
           for (auto e : edges) {  // find the first boundary edge
             if (e->spring == "boundary") {
               edge = e;
               edge_0 = e;
+              found_boundary = true;
+              break;
             }
           }
 
-          do {  // collect boundary edges, create external halfedges
-            // TODO: endless loop
-            edges_boundary.emplace_back(edge);
+          if (found_boundary) {
+            do {  // collect boundary edges, create external halfedges
+              edges_boundary.emplace_back(edge);
 
-            Halfedge* h = new Halfedge();
-            h->idx = halfedges.size();
-            halfedges.emplace_back(h);
-            h->edge = edge;
-            h->face = f;
-            f->halfedge = h;
-            h->twin = edge->halfedge;
-            h->twin->twin = h;
+              Halfedge *h = new Halfedge();
+              h->idx = halfedges.size();
+              halfedges.emplace_back(h);
+              h->edge = edge;
+              h->face = f;
+              f->halfedge = h;
+              h->twin = edge->halfedge;
+              h->twin->twin = h;
 
-            // find next boundary edge
-            Halfedge* hh = edge->halfedge;
-            while (true) {
-              hh = hh->next;
-              if (hh->edge->spring == "boundary"){
-                edge = hh->edge;
-                break;
+              // find next boundary edge
+              Halfedge *hh = edge->halfedge;
+              while (true) {
+                hh = hh->next;
+                if (hh->edge->spring == "boundary") {
+                  edge = hh->edge;
+                  break;
+                }
+                hh = hh->twin;
               }
-              hh = hh->twin;
+            } while (edge != edge_0);
+
+            // connect boundary halfedges
+            int i = 0;
+            for (auto e : edges_boundary) {
+              Halfedge *h = e->halfedge->twin;
+              int i_next = (i + 1) % edges_boundary.size();
+              int i_prev = (i + edges_boundary.size() - 1) % edges_boundary.size();
+              h->next = edges_boundary[i_prev]->halfedge->twin;
+              h->prev = edges_boundary[i_next]->halfedge->twin;
+              h->node = edges_boundary[i_next]->halfedge->node;
+              i++;
             }
-          } while (edge != edge_0);
-
-          // connect boundary halfedges
-          int i = 0;
-          for (auto e : edges_boundary) {
-            Halfedge* h = e->halfedge->twin;
-            int i_next = (i + 1) % edges_boundary.size();
-            int i_prev = (i + edges_boundary.size() - 1) % edges_boundary.size();
-            h->next = edges_boundary[i_prev]->halfedge->twin;
-            h->prev = edges_boundary[i_next]->halfedge->twin;
-            h->node = edges_boundary[i_next]->halfedge->node;
-            i++;
+            // compute edge rest_len
+            for (auto e : edges) {
+              e->rest_len = e->halfedge->length();
+            }
           }
-
+          else {
+            cout<<"boundary not found"<<endl;
+          }
         }
 
       }
 
-      if (ImGui::Button("model")) {
-        // set points
+      if (ImGui::Button("step")) {
+
+        solver->reset();
+
+        // setPoints
         {
           points.resize(3, nodes.size());
           for (auto n : nodes) {
@@ -900,60 +954,157 @@ int main(int argc, char **argv) {
           solver->setPoints(points);
         }
 
-        // set constraints
-        {
-          // Closeness
-          for (auto n : nodes) {
-            std::vector<int> id_vector;
-            id_vector.push_back(n->idx);
-            ShapeOp::Scalar weight = w_closeness;
-            auto points = solver->getPoints();
-            auto c = std::make_shared<ShapeOp::ClosenessConstraint>(id_vector, weight, points);
-            solver->addConstraint(c);
-          }
-
-
-          // Stretch
-          for (auto e : edges) {
-            std::vector<int> id_vector;
-            cout<<"a"<<endl;
-            cout<<e->halfedge->node->idx<<endl;
-            id_vector.push_back(e->halfedge->node->idx);
-            cout<<"b"<<endl;
-            id_vector.push_back(e->halfedge->twin->node->idx);
-            cout<<"c"<<endl;
-            auto weight = w_stretch;
-            cout<<"d"<<endl;
-            if (e->spring == "bridge") weight = w_bridge;
-            cout<<"e"<<endl;
-            auto c = std::make_shared<ShapeOp::EdgeStrainConstraint>(id_vector, weight, solver->getPoints());
-            cout<<"f"<<endl;
-            double len_origin =  e->halfedge->length();
-            cout<<"g"<<endl;
-            c->setEdgeLength(len_origin);
-            cout<<"h"<<endl;
-            solver->addConstraint(c);
-          }
-
+        // ClosenessConstraint (prevent drifting)
+        for (auto n : nodes) {
+          std::vector<int> id_vector;
+          id_vector.push_back(n->idx);
+          ShapeOp::Scalar weight = w_closeness;
+          auto c = std::make_shared<ShapeOp::ClosenessConstraint>(id_vector, weight, solver->getPoints());
+          solver->addConstraint(c);
         }
 
-        // solve
-        {
-          solver->setDamping(damping);
-
-          solver->initialize();
-          solver->solve(n_iter);
-
-          points = solver->getPoints();
-          for (auto n : nodes) {
-            n->pos = points.col(n->idx);
+        // EdgeStrainConstraint
+        for (auto e : edges) {
+          std::vector<int> id_vector;
+          id_vector.push_back(e->halfedge->node->idx);
+          id_vector.push_back(e->halfedge->twin->node->idx);
+          auto weight = w_stretch;
+          auto c = std::make_shared<ShapeOp::EdgeStrainConstraint>(id_vector, weight, solver->getPoints(), 1, 1.5);
+          if (e->spring == "bridge") {
+            weight = w_bridge;
+            c = std::make_shared<ShapeOp::EdgeStrainConstraint>(id_vector, weight, solver->getPoints());
           }
+          double rest_len =  e->rest_len;
+          c->setEdgeLength(rest_len);
+          solver->addConstraint(c);
+        }
+
+        // BendingConstraint
+        Eigen::MatrixXd points_flat;
+        points_flat.resize(points.rows(), points.cols());
+        for (auto e : edges) {
+          std::vector<int> id_vector;
+          int i_0 = e->halfedge->node->idx;
+          int i_1 = e->halfedge->twin->node->idx;
+          int i_2 = e->halfedge->next->next->node->idx;
+          int i_3 = e->halfedge->twin->next->next->node->idx;
+
+          Eigen::RowVector3d v01 = nodes[i_1]->pos - nodes[i_0]->pos;
+          Eigen::RowVector3d v02 = nodes[i_2]->pos - nodes[i_0]->pos;
+          Eigen::RowVector3d v03 = nodes[i_3]->pos - nodes[i_0]->pos;
+
+          double theta = acos( v01.dot(v02) / (v01.norm() * v02.norm() ) );
+          double phi = acos( v01.dot(v03) / (v01.norm() * v03.norm() ) );
+
+          // positions of 4 flattened nodes
+          Eigen::RowVector3d p_0(0, 0, 0);
+          Eigen::RowVector3d p_1(v01.norm(), 0, 0);
+          Eigen::RowVector3d p_2(cos(theta) * v02.norm(), sin(theta) * v02.norm(), 0);
+          Eigen::RowVector3d p_3(cos(phi) * v03.norm(), -sin(phi) * v03.norm(), 0);
+
+          id_vector.push_back(i_0); id_vector.push_back(i_2); id_vector.push_back(i_1); id_vector.push_back(i_3);
+          points_flat.col(i_0) = p_0;
+          points_flat.col(i_1) = p_1;
+          points_flat.col(i_2) = p_2;
+          points_flat.col(i_3) = p_3;
+
+          auto c = std::make_shared<ShapeOp::BendingConstraint>(id_vector, w_bending, points_flat);
+          solver->addConstraint(c);
+        }
+
+        // AngleConstraint for stretch springs
+        for (auto n : nodes) {
+          std::vector<int> id_vector;
+          if (n->idx_iso != -1) {
+            std::vector<int> id_vector;
+            id_vector.push_back(n->idx);
+
+            Halfedge* h0 = n->halfedge;
+            Halfedge* h = n->halfedge;
+            do {
+              if (h->twin->node->idx_iso == n->idx_iso) {
+                id_vector.push_back(h->twin->node->idx);
+              }
+              h = h->twin->next;
+            } while ( h != h0 );
+
+            if (id_vector.size() != 3) cout<<"not 3"<<endl;
+            auto c = std::make_shared<ShapeOp::AngleConstraint>(id_vector, w_angle_stretch, solver->getPoints());
+            solver->addConstraint(c);
+          }
+        }
+
+        // AngleConstraint for shearing (negative effect on flattening)
+        for (auto f : faces) {
+          int i0, i1, i2;
+          Halfedge* h = f->halfedge;
+          std::vector<int> id_vector;
+          i0 = h->node->idx;
+          i1 = h->next->node->idx;
+          i2 = h->prev->node->idx;
+          id_vector.push_back(i0); id_vector.push_back(i1); id_vector.push_back(i2);
+          auto c = std::make_shared<ShapeOp::AngleConstraint>(id_vector, w_angle_shear, solver->getPoints());
+          solver->addConstraint(c);
+
+          h = h->next;
+          id_vector.clear();
+          i0 = h->node->idx;
+          i1 = h->next->node->idx;
+          i2 = h->prev->node->idx;
+          id_vector.push_back(i0); id_vector.push_back(i1); id_vector.push_back(i2);
+          c = std::make_shared<ShapeOp::AngleConstraint>(id_vector, w_angle_shear, solver->getPoints());
+          solver->addConstraint(c);
+
+          h = h->next;
+          id_vector.clear();
+          i0 = h->node->idx;
+          i1 = h->next->node->idx;
+          i2 = h->prev->node->idx;
+          id_vector.push_back(i0); id_vector.push_back(i1); id_vector.push_back(i2);
+          c = std::make_shared<ShapeOp::AngleConstraint>(id_vector, w_angle_shear, solver->getPoints());
+          solver->addConstraint(c);
+        }
+
+        // PlaneConstraint (flattening force)
+        {
+          std::vector<int> id_vector;
+          for (auto n : nodes) {
+            id_vector.push_back(n->idx);
+          }
+          auto weight = w_plane;
+          auto c = std::make_shared<ShapeOp::PlaneConstraint>(id_vector, weight, solver->getPoints());
+          solver->addConstraint(c);
+        }
+
+        // spreading force
+        Eigen::RowVector3d n0(0, 0, 1.0);
+        for (auto e : edges) {
+          // TODO: test and debug spreading force
+          Eigen::RowVector3d n1 = e->halfedge->face->normal();
+          Eigen::RowVector3d n2 = e->halfedge->twin->face->normal();
+          Eigen::RowVector3d nj1 = n1 - n1.dot(n0) * n0;
+          Eigen::RowVector3d nj2 = n2 - n2.dot(n0) * n0;
+          Eigen::RowVector3d Fj1 = nj1 * w_spreading;
+          Eigen::RowVector3d Fj2 = nj2 * w_spreading;
+          int i1 = e->halfedge->prev->node->idx;
+          int i2 = e->halfedge->twin->prev->node->idx;
+
+          auto f = std::make_shared<ShapeOp::VertexForce>(Fj1 - Fj2, i1);
+          solver->addForces(f);
+          f = std::make_shared<ShapeOp::VertexForce>(Fj2 - Fj1, i2);
+          solver->addForces(f);
+        }
+
+        solver->initialize();
+        solver->setDamping(damping);
+        solver->solve(n_iter);
+        points = solver->getPoints();
+        for (auto n : nodes) {
+          n->pos = points.col(n->idx);
         }
 
         redraw();
-
       }
-
     }
   };
 

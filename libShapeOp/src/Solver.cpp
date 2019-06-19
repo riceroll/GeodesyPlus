@@ -58,6 +58,13 @@ SHAPEOP_INLINE void Solver::setTimeStep(Scalar timestep) {
 SHAPEOP_INLINE void Solver::setDamping(Scalar damping) {
   damping_ = damping;
 }
+
+
+SHAPEOP_INLINE void Solver::reset() {
+  constraints_.clear();
+  forces_.clear();
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 SHAPEOP_INLINE const Matrix3X &Solver::getPoints() {
   return points_;
