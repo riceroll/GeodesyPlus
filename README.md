@@ -1,15 +1,12 @@
-Compiling:
-	mkdir build
-	cd build
-	cmake .. && make
+##### Compilation
 
-Dependency:
-	libigl
-	eigen3
-	optional spectra(https://spectralib.org/ )
-	
-TODO
+```bash
+mkdir build; cd build; cmake ..; make
+```
 
-TODO
-1. Extract graph and trace
-2. (Maybe)Flatten with shapeop integration
+
+
+##### Dependency
+- libigl
+- eigen3
+- ShapeOp	
