@@ -82,6 +82,7 @@ endif()
 
 include_directories("./libShapeOp/src/")
 include_directories("./libShapeOp/api/")
+include_directories("/usr/local/include/")
 
 add_subdirectory(libShapeOp)
 
