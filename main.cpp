@@ -143,11 +143,12 @@ int main(int argc, char **argv) {
   bool background_black = true;
   bool is_flattening = false;
 
-  float iso_spacing = 3.0;
+  float iso_spacing = 10.0;
   int lower_bound = 0;
   int upper_bound = 0;
-  int n_iter = 1.0;
+  int n_iter = 1;
   float w_smooth = 0.1;
+  float damping_flatten = 1.2;
 
   float damping;
   float time_step;
@@ -155,7 +156,7 @@ int main(int argc, char **argv) {
   float w_stretch;
   float w_bridge;
   float w_bending;
-  float w_plane;
+  float w_flatten;
   float w_angle_stretch;
   float w_angle_shear;
   float w_spreading;
@@ -541,10 +542,10 @@ int main(int argc, char **argv) {
     w_stretch = 100.0;
     w_bridge = 400.0;
     w_bending = 10.0;
-    w_plane = 1.0;
     w_angle_stretch = 10.0;
     w_angle_shear = 0.0;
     w_spreading = 0.0;
+    w_flatten = 10.0;
   };
 
   auto triangulate = [&]() {
@@ -913,7 +914,7 @@ int main(int argc, char **argv) {
     display_stress = true;
 
     cout<<"done."<<endl<<"Updating position......";
-    {
+    { // flattening velocity
       double d_max = 0;
       for (auto n : nodes) if (abs(n->pos.z()) > d_max) d_max = abs(n->pos.z());
 
@@ -924,12 +925,13 @@ int main(int argc, char **argv) {
       }
 
       for (auto n : nodes) {
-        double weight = w_plane;
-        weight *= n->pos.z() / d_max / xy_max;
-        n->velocity = Eigen::RowVector3d(0, 0, -weight);
+        float speed = ( w_flatten * exp(log(d_max / xy_max) * (1 / damping_flatten) ) ) * (n->pos.z() / d_max) ;
+        n->velocity = Eigen::RowVector3d(0, 0, - speed);
         n->pos += n->velocity;
       }
     }
+
+
 
     cout<<"done."<<endl<<"Updating solver......";
     solver->reset();
@@ -1065,19 +1067,18 @@ int main(int argc, char **argv) {
       for (auto n : nodes) {
         id_vector.push_back(n->idx);
       }
-      auto c = std::make_shared<ShapeOp::PlaneConstraint>(id_vector, w_plane, solver->getPoints());
-//      if (w_plane > 0) solver->addConstraint(c);
+      auto c = std::make_shared<ShapeOp::PlaneConstraint>(id_vector, w_flatten, solver->getPoints());
+//      if (w_flatten > 0) solver->addConstraint(c);
     }
 
-    // flattening force
+    // flattening force (cannot see any effect?)
     {
       for (auto n : nodes) {
         double d = n->pos.z();  // distance to the target plane
-        double m = d * w_plane;
-//        Eigen::RowVector3d force(0., 0., -m);
-        ShapeOp::Vector3 force(0, 0, 10);
+        double m = d * w_flatten;
+        Eigen::RowVector3d force(0., 0., -m);
         auto f = std::make_shared<ShapeOp::VertexForce>(force, n->idx);
-//        if (w_plane > 0.) solver->addForces(f);
+//        if (w_flatten > 0.) solver->addForces(f);
       }
 
     }
@@ -1181,7 +1182,6 @@ int main(int argc, char **argv) {
     if (ImGui::CollapsingHeader("test window", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::InputInt("lower_bound", &lower_bound);
       ImGui::InputInt("upper_bound", &upper_bound);
-      ImGui::InputFloat("t_test", &w_smooth);
     }
 
     if (ImGui::CollapsingHeader("params", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1190,13 +1190,14 @@ int main(int argc, char **argv) {
       ImGui::InputFloat("stretch", &w_stretch);
       ImGui::InputFloat("bridge", &w_bridge);
       ImGui::InputFloat("bending", &w_bending);
-      ImGui::InputFloat("plane", &w_plane);
+      ImGui::InputFloat("flatten", &w_flatten);
       ImGui::InputFloat("angleStretch", &w_angle_stretch);
       ImGui::InputFloat("angleShear", &w_angle_shear);
       ImGui::InputFloat("spreading", &w_spreading);
       ImGui::InputFloat("damping", &damping);
       ImGui::InputFloat("timeStep", &time_step);
       ImGui::InputInt("numIter", &n_iter);
+      ImGui::InputFloat("smoothing", &w_smooth);
     }
 
     if (ImGui::CollapsingHeader("display", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1277,6 +1278,7 @@ int main(int argc, char **argv) {
 
       if (ImGui::Button("step")) {
         for (int i = 0; i < n_iter; i++) {
+//          halfedgize();
           step();
           cout<< float(i + 1) / n_iter <<endl;
         }
@@ -1401,7 +1403,7 @@ int main(int argc, char **argv) {
   viewer.callback_mouse_down =
     [&](igl::opengl::glfw::Viewer& viewer, int, int)->bool
     {
-      // intersect ray with xy plane
+      // intersect ray with xy flatten
       Eigen::RowVector3d v_xy;  // intersection between ray and xy plain
       double x = viewer.current_mouse_x;
       double y = viewer.core.viewport(3) - viewer.current_mouse_y;

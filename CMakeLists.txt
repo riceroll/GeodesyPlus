@@ -82,10 +82,14 @@ endif()
 
 include_directories("./libShapeOp/src/")
 include_directories("./libShapeOp/api/")
+
+# fix: compiler cannot find <boost>
 include_directories("/usr/local/include/")
+# fix: compiler cannot find some OpenGL constants
+include_directories("/System/Library/Frameworks/OpenGL.framework/Headers/")
+
 
 add_subdirectory(libShapeOp)
-
 
 # Add your project files
 file(GLOB SRCFILES *.cpp)
