@@ -932,7 +932,6 @@ int main(int argc, char **argv) {
     }
 
 
-
     cout<<"done."<<endl<<"Updating solver......";
     solver->reset();
 
@@ -975,6 +974,8 @@ int main(int argc, char **argv) {
     Eigen::MatrixXd points_flat;
     points_flat.resize(points.rows(), points.cols());
     for (auto e : edges) {
+      if (e->spring == "boundary") continue;
+
       std::vector<int> id_vector;
       int i_0 = e->halfedge->node->idx;
       int i_1 = e->halfedge->twin->node->idx;
@@ -1327,6 +1328,7 @@ int main(int argc, char **argv) {
       }
 
       if (ImGui::Button("interpolate")) {
+
 
 
 

@@ -36,6 +36,7 @@ find_package_handle_standard_args(LIBIGL
 mark_as_advanced(LIBIGL_INCLUDE_DIR)
 message("${LIBIGL_INCLUDE_DIR}")
 
-set(LIBIGL_INCLUDE_DIR "/Users/Roll/desktop/libigl/cmake")
+set(LIBIGL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libigl/cmake")
+
 list(APPEND CMAKE_MODULE_PATH "${LIBIGL_INCLUDE_DIR}/../cmake")
 include(libigl)
