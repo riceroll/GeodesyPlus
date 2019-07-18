@@ -53,8 +53,8 @@ struct Node {
   Halfedge* halfedge = nullptr;
 
   // for interpolation
-  bool is_merged = false;
   int i_interp = -1;  // by default not interpolated
+  bool visited = false;
 
   // for printing
   bool is_move = false; // extrude
@@ -109,6 +109,7 @@ struct Halfedge {
 
 struct Face {
   int idx = -1;
+  bool is_external = false;
 
   Halfedge* halfedge = nullptr;
 
@@ -127,6 +128,7 @@ struct Face {
 
   // for interpolation
   bool is_up = true;
+  bool visited = false;
   Edge *e_stretch = nullptr;
   Edge *e_bridge_left = nullptr;
   Edge *e_bridge_right = nullptr;
@@ -151,8 +153,9 @@ int main(int argc, char **argv) {
   vector<vector<Node *>> boundaries_top;
   vector<vector<Node *>> boundaries_bottom;
   vector<vector<Node *>> boundaries_saddle;
-  vector<vector<Node *>> iso_nodes;   // from iso == 0
-  vector<vector<Face *>> iso_faces;
+
+  vector<vector<vector<Node *>>> iso_nodes;  // iso -> loop -> Node
+  vector<vector<vector<Face *>>> iso_faces; // iso -> loop -> Face
   vector<Node*> printing_path;
 
   ShapeOp::Solver* solver = new ShapeOp::Solver();
@@ -166,7 +169,7 @@ int main(int argc, char **argv) {
   string type_focus = "node";
   bool display_label = false;
   int display_mode = 0; // 0: graph, 1: halfedges, 2: mesh
-  int label_type = 0; // 0: node, 1: isoline, boundary, 2: grad line, 3: spring,
+  int label_type = 0;   // 0: node, 1: isoline, boundary, 2: grad line, 3: spring,
   bool display_stress = false; // 0: spring, 1: stress
   bool display_bridge = true;
   bool background_black = true;
@@ -259,7 +262,6 @@ int main(int argc, char **argv) {
         else if (label_type == 2)   // grad line
           viewer.data().add_label(n->pos, to_string(n->idx_grad));
       }
-
 
       for (auto e : edges) {
         if (label_type != 3)
@@ -547,23 +549,23 @@ int main(int argc, char **argv) {
     vector<Edge*> es_triplet = {nullptr, nullptr, nullptr};
 
     if (find_the_other_face(h_a->node, h_c->node, &ns_triplet, &es_triplet)) {
-      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos)/3,
-                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos)/3,
+      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos) / 3,
+                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos) / 3,
                                Eigen::RowVector3d(0.9,0.9,0)
       );
       complete_face(es_triplet, ns_triplet);
     }
 
     if (find_the_other_face(h_c->node, h_b->node, &ns_triplet, &es_triplet)) {
-      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos)/3,
-                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos)/3,
+      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos) / 3,
+                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos) / 3,
                                Eigen::RowVector3d(0,0.9,0.9)
       );
       complete_face(es_triplet, ns_triplet);
     }
     if (find_the_other_face(h_b->node, h_a->node, &ns_triplet, &es_triplet)) {
-      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos)/3,
-                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos)/3,
+      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos) / 3,
+                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos) / 3,
                                Eigen::RowVector3d(0.9,0,0.9)
       );
       complete_face(es_triplet, ns_triplet);
@@ -914,13 +916,14 @@ int main(int argc, char **argv) {
 
     // external face & boundary halfedges
     {
-      Face *f = new Face();
+      Face *f = new Face(); // external face
       Edge *edge;
       Edge *edge_0;
       vector<Edge *> edges_boundary;
 
       // face
       f->idx = faces.size();
+      f->is_external = true;
       faces.emplace_back(f);
 
       bool found_boundary = false;
@@ -1404,251 +1407,307 @@ int main(int argc, char **argv) {
           if (n->idx_iso > i_iso_max) i_iso_max = n->idx_iso;
         }
 
-        // collect iso_nodes_iter, assume one iso value one loop
+
+        // iso_nodes, assume one iso value one loop
         for (int iso_iter = 0; iso_iter <= i_iso_max; iso_iter++ ) {
-          vector<Node*> iso_nodes_iter;
-          Node* n_iter = nullptr;
-          for (auto n : nodes) {
-            if (n->idx_iso == iso_iter) {
-              n_iter = n;
-              break;
-            }
-          }
-          Node* n_begin = n_iter;
-          do {
-            iso_nodes_iter.push_back(n_iter);
-            if (n_iter->left) n_iter = n_iter->left;
-            else cout<<"err: n_iter->left cannot be found";
-          } while (n_iter != n_begin);
-          iso_nodes.push_back(iso_nodes_iter);
-        }
+          vector<vector<Node*>> iso_nodes_loops;
+          while (true) {
+            vector<Node*> iso_nodes_iter;
 
-        // collect iso_faces_iter, assume one iso value one loop
-        for (int iso_iter = 0; iso_iter <= i_iso_max; iso_iter++ ) {
-          vector<Face*> iso_faces_iter;
-          Face* f_iter;
-          for (auto f : faces) {
-            bool connect_down_iso = false;
-            bool connect_up_iso = false;
-
-            Halfedge* h_iter = f->halfedge;
-            do {
-              if (h_iter->node->idx_iso == iso_iter)
-                connect_down_iso = true;
-              if (h_iter->node->idx_iso == iso_iter + 1 or h_iter->node->idx_iso == -1)
-                connect_up_iso = true;
-              h_iter = h_iter->next;
-            } while (h_iter != f->halfedge);
-
-            if (connect_down_iso and connect_up_iso) {
-              f_iter = f;
-              break;
-            }
-          }
-
-          Face* f_begin = f_iter;
-          do {
-            iso_faces_iter.push_back(f_iter);
-
-            Halfedge* h_iter = f_iter->halfedge;
-            while (true) {
-              if ( ((h_iter->node->idx_iso == iso_iter + 1) or (h_iter->node->idx_iso == -1))
-                  and h_iter->next->node->idx_iso == iso_iter ) { // left edge
-                f_iter = h_iter->twin->face;
+            bool found = false;
+            Node* n_iter = nullptr;
+            for (auto n : nodes) {
+              if (n->idx_iso == iso_iter and (not n->visited)) {
+                n_iter = n;   // begin with any unvisited node in any loop of the iso
+                found = true;
                 break;
               }
-              h_iter = h_iter->next;
             }
+            if (not found) break;
 
-          } while (f_iter != f_begin);
-          iso_faces.push_back(iso_faces_iter);
+            Node* n_begin = n_iter;
+            do {
+              n_iter->visited = true;
+              iso_nodes_iter.push_back(n_iter);
+              if (n_iter->left) n_iter = n_iter->left;
+              else cout<<"err: n_iter->left cannot be found";
+            } while (n_iter != n_begin);
+            iso_nodes_loops.push_back(iso_nodes_iter);
+          }
+          iso_nodes.push_back(iso_nodes_loops);
         }
 
 
-        // start interpolation
+        // iso_faces, assume one iso value one loop
+        for (int iso_iter = 0; iso_iter <= i_iso_max; iso_iter++ ) {
+          vector<vector<Face*>> iso_faces_loops;
+
+          while (true) {
+            vector<Face *> iso_faces_iter;
+            Face *f_iter;
+            bool found = false;
+            for (auto f : faces) {
+              bool connect_down_iso = false;
+              bool connect_up_iso = false;
+
+              Halfedge *h_iter = f->halfedge;
+              do {
+                if (h_iter->node->idx_iso == iso_iter)
+                  connect_down_iso = true;
+                if (h_iter->node->idx_iso == iso_iter + 1 or h_iter->node->idx_iso == -1)
+                  connect_up_iso = true;
+                h_iter = h_iter->next;
+              } while (h_iter != f->halfedge);
+
+              if (connect_down_iso and connect_up_iso and (not f->visited)) {
+                f_iter = f;
+                found = true;
+                break;
+              }
+            }
+            if (not found) break;
+
+            Face *f_begin = f_iter;
+            do {
+              f_iter->visited =true;
+              iso_faces_iter.push_back(f_iter);
+
+              Halfedge *h_iter = f_iter->halfedge;
+              while (true) {
+                if (((h_iter->node->idx_iso == iso_iter + 1) or (h_iter->node->idx_iso == -1))
+                    and h_iter->next->node->idx_iso == iso_iter) { // left edge
+                  f_iter = h_iter->twin->face;
+                  break;
+                }
+                h_iter = h_iter->next;
+              }
+
+            } while (f_iter != f_begin);
+            iso_faces_loops.push_back(iso_faces_iter);
+          }
+          iso_faces.push_back(iso_faces_loops);
+        }
+
+
+        // interpolate
         for (int i_iso = 0; i_iso <= i_iso_max; i_iso++) {
-          int num_interp;   // # of interpolated nodes
+
+          // compute num_interpolation, assume concentric circles
+          int num_interp = 0;
           if (i_iso != i_iso_max) {
             Eigen::RowVector3d sum_pos(0, 0, 0);
             double sum_dist_down = 0;
             double sum_dist_up = 0;
-            for (auto n : iso_nodes[i_iso]) { sum_pos += n->pos; }
-            Eigen::RowVector3d center = sum_pos / iso_nodes[i_iso].size();
-            for (auto n : iso_nodes[i_iso]) { sum_dist_down += (n->pos - center).norm(); }
-            for (auto n : iso_nodes[i_iso + 1]) { sum_dist_up += (n->pos - center).norm(); }
-            double radius_down = sum_dist_down / iso_nodes[i_iso].size();
-            double radius_up = sum_dist_up / iso_nodes[i_iso + 1].size();
+            for (auto n : iso_nodes[i_iso][0]) { sum_pos += n->pos; }
+            Eigen::RowVector3d center = sum_pos / iso_nodes[i_iso][0].size();
+            for (auto n : iso_nodes[i_iso][0]) { sum_dist_down += (n->pos - center).norm(); }
+            for (auto n : iso_nodes[i_iso + 1][0]) { sum_dist_up += (n->pos - center).norm(); }
+            double radius_down = sum_dist_down / iso_nodes[i_iso][0].size();
+            double radius_up = sum_dist_up / iso_nodes[i_iso + 1][0].size();
             double spacing = radius_down - radius_up; // assume down is bigger than up
             num_interp = int(spacing / gap_size);
           }
-          else {
-            num_interp = 0;
-          }
 
 
-          for (auto f : iso_faces[i_iso]) {
-            Halfedge *h_iter = f->halfedge;
-            do {
-              if (h_iter->node->idx_iso == h_iter->next->node->idx_iso) {
-                if (h_iter->node->idx_iso == i_iso) { // up triangle
-                  f->e_stretch = h_iter->edge;
-                  f->e_bridge_left = h_iter->prev->edge;
-                  f->e_bridge_right = h_iter->next->edge;
-                  f->n_bridge = h_iter->next->next->node;
-                  f->n_stretch_left = h_iter->node;
-                  f->n_stretch_right = h_iter->next->node;
-                  f->pos_stretch_mid = f->e_stretch->centroid();
-                  f->is_up = true;
+          for (auto iso_faces_loop : iso_faces[i_iso]) {
+            for (auto f : iso_faces_loop) {
+              // assign face values
+              Halfedge *h_iter = f->halfedge;
+              do {
+                if (h_iter->node->idx_iso == h_iter->next->node->idx_iso) {
+                  if (h_iter->node->idx_iso == i_iso) { // up triangle
+                    f->e_stretch = h_iter->edge;
+                    f->e_bridge_left = h_iter->prev->edge;
+                    f->e_bridge_right = h_iter->next->edge;
+                    f->n_bridge = h_iter->next->next->node;
+                    f->n_stretch_left = h_iter->node;
+                    f->n_stretch_right = h_iter->next->node;
+                    f->pos_stretch_mid = f->e_stretch->centroid();
+                    f->is_up = true;
 
-                } else {  // down triangle
-                  f->e_stretch = h_iter->edge;
-                  f->e_bridge_left = h_iter->next->edge;
-                  f->e_bridge_right = h_iter->prev->edge;
-                  f->n_bridge = h_iter->next->next->node;
-                  f->n_stretch_left = h_iter->next->node;
-                  f->n_stretch_right = h_iter->node;
-                  f->pos_stretch_mid = f->e_stretch->centroid();
-                  f->is_up = false;
+                  } else {  // down triangle
+                    f->e_stretch = h_iter->edge;
+                    f->e_bridge_left = h_iter->next->edge;
+                    f->e_bridge_right = h_iter->prev->edge;
+                    f->n_bridge = h_iter->next->next->node;
+                    f->n_stretch_left = h_iter->next->node;
+                    f->n_stretch_right = h_iter->node;
+                    f->pos_stretch_mid = f->e_stretch->centroid();
+                    f->is_up = false;
+                  }
+                  break;
                 }
-                break;
+                h_iter = h_iter->next;
+              } while (h_iter != f->halfedge);
+
+              if (num_interp == 0) continue;
+
+
+
+              Eigen::RowVector3d vec_bridge(0, 0, 0);
+              Eigen::RowVector3d vec_stretch(0, 0, 0);
+              Eigen::RowVector3d vec_increment;
+              double len_bridge = 0; double len_stretch = 0;
+              Node *n_iter = f->n_bridge;
+              // vec_bridge
+              {
+                do {
+                  vec_increment = get_halfedge(n_iter->left, n_iter)->vector();
+                  vec_bridge += vec_increment;
+                  len_bridge += vec_increment.norm();
+                  if (n_iter->left) n_iter = n_iter->left;
+                  else {
+                    cout << "warning: no_left" << endl;
+                    break;
+                  }
+                } while (len_bridge < (f->n_bridge->pos - f->pos_stretch_mid).norm() / 2);
+                n_iter = f->n_bridge;
+                do {
+                  vec_increment = get_halfedge(n_iter, n_iter->right)->vector();
+                  vec_bridge += vec_increment;
+                  len_bridge += vec_increment.norm();
+                  if (n_iter->right) n_iter = n_iter->right;
+                  else {
+                    cout << "warning: no_right" << endl;
+                    break;
+                  }
+                } while (len_bridge < (f->n_bridge->pos - f->pos_stretch_mid).norm());
+                vec_bridge.normalize();
               }
-              h_iter = h_iter->next;
-            } while (h_iter != f->halfedge);
-
-            if (num_interp == 0) continue;
-
-
-            Eigen::RowVector3d vec_bridge(0, 0, 0);
-            Eigen::RowVector3d vec_stretch(0, 0, 0);
-            double len_bridge = 0;
-            double len_stretch = 0;
-            Eigen::RowVector3d vec_increment;
-            Node *n_iter = f->n_bridge;
-            do {
-              vec_increment = get_halfedge(n_iter->left, n_iter)->vector();
-              vec_bridge += vec_increment;
-              len_bridge += vec_increment.norm();
-              if (n_iter->left) n_iter = n_iter->left;
-              else {
-                cout<<"warning: no_left"<<endl;
-                break;
+              // vec_stretch
+              {
+                n_iter = f->n_stretch_left;
+                vec_stretch += get_halfedge(f->n_stretch_left, f->n_stretch_right)->vector();
+                do {
+                  vec_increment = get_halfedge(n_iter->left, n_iter)->vector();
+                  vec_stretch += vec_increment;
+                  len_stretch += vec_increment.norm();
+                  if (n_iter->left) n_iter = n_iter->left;
+                  else {
+                    cout << "warning: no_left" << endl;
+                    break;
+                  }
+                } while (len_stretch < (f->n_bridge->pos - f->pos_stretch_mid).norm() / 2);
+                n_iter = f->n_stretch_right;
+                do {
+                  vec_increment = get_halfedge(n_iter, n_iter->right)->vector();
+                  vec_stretch += vec_increment;
+                  len_stretch += vec_increment.norm();
+                  if (n_iter->right) n_iter = n_iter->right;
+                  else {
+                    cout << "warning: no_right" << endl;
+                    break;
+                  }
+                } while (len_stretch < (f->n_bridge->pos - f->pos_stretch_mid).norm());
+                vec_stretch.normalize();
               }
-            } while (len_bridge < (f->n_bridge->pos - f->pos_stretch_mid).norm() / 2);
-            n_iter = f->n_bridge;
-            do {
-              vec_increment = get_halfedge(n_iter, n_iter->right)->vector();
-              vec_bridge += vec_increment;
-              len_bridge += vec_increment.norm();
-              if (n_iter->right) n_iter = n_iter->right;
-              else {
-                cout<<"warning: no_right"<<endl;
-                break;
+
+              // compute distance & num_interp
+              {
+                Eigen::RowVector3d normal = f->normal();
+                Eigen::RowVector3d vec_stretch_projected = vec_stretch - vec_stretch.dot(normal) * normal;
+                Eigen::RowVector3d vec_bridge_projected = vec_bridge - vec_bridge.dot(normal) * normal;
+
+                Eigen::RowVector3d vec_parallel = vec_stretch_projected + vec_bridge_projected;
+                vec_parallel.normalize();
+                Eigen::RowVector3d vec_perpendicular = normal.cross(vec_parallel);
+                vec_perpendicular.normalize();
+
+                Eigen::RowVector3d vec_mid = f->pos_stretch_mid - f->n_bridge->pos;
+                double iso_distance = abs(vec_mid.dot(vec_perpendicular));
+                num_interp = int(iso_distance / gap_size);
               }
-            } while (len_bridge < (f->n_bridge->pos - f->pos_stretch_mid).norm());
-            vec_bridge.normalize();
 
-            n_iter = f->n_stretch_left;
-            vec_stretch += get_halfedge(f->n_stretch_left, f->n_stretch_right)->vector();
-            do {
-              vec_increment = get_halfedge(n_iter->left, n_iter)->vector();
-              vec_stretch += vec_increment;
-              len_stretch += vec_increment.norm();
-              if (n_iter->left) n_iter = n_iter->left;
-              else {
-                cout<<"warning: no_left"<<endl;
-                break;
+
+              // interpolate nodes
+              for (int i_interp = 0; i_interp < num_interp; i_interp++) {
+                double weight_bridge = float(i_interp + 1) / (num_interp + 1);
+                double weight_stretch = 1.0 - weight_bridge;
+
+                Eigen::RowVector3d vec_interp = weight_bridge * vec_bridge + weight_stretch * vec_stretch;
+                Eigen::RowVector3d pos_interp = weight_bridge * f->n_bridge->pos + weight_stretch * f->pos_stretch_mid;
+                f->pos_interps.push_back(pos_interp);
+
+                Eigen::RowVector3d vec_left = f->e_bridge_left->halfedge->vector();
+                Eigen::RowVector3d pos_bridge_left = f->e_bridge_left->halfedge->node->pos;
+                Eigen::RowVector3d pos_left = get_intersection(pos_interp, pos_bridge_left,
+                                                               vec_interp, vec_left);
+
+                Eigen::RowVector3d vec_right = f->e_bridge_right->halfedge->vector();
+                Eigen::RowVector3d pos_bridge_right = f->e_bridge_right->halfedge->node->pos;
+                Eigen::RowVector3d pos_right = get_intersection(pos_interp, pos_bridge_right,
+                                                                vec_interp, vec_right);
+
+                auto n_interp_left = new Node();
+                n_interp_left->pos = pos_left;
+                n_interp_left->i_interp = i_interp;
+                f->e_bridge_left->nodes_interp_as_left.push_back(n_interp_left);
+
+                auto n_interp_right = new Node();
+                n_interp_right->pos = pos_right;
+                n_interp_right->i_interp = i_interp;
+                f->e_bridge_right->nodes_interp_as_right.push_back(n_interp_right);
+
               }
-            } while (len_stretch < (f->n_bridge->pos - f->pos_stretch_mid).norm() / 2);
-            n_iter = f->n_stretch_right;
-            do {
-              vec_increment = get_halfedge(n_iter, n_iter->right)->vector();
-              vec_stretch += vec_increment;
-              len_stretch += vec_increment.norm();
-              if (n_iter->right) n_iter = n_iter->right;
-              else {
-                cout<<"warning: no_right"<<endl;
-                break;
-              }
-            } while (len_stretch < (f->n_bridge->pos - f->pos_stretch_mid).norm());
-            vec_stretch.normalize();
-
-
-            for (int i_interp = 0; i_interp < num_interp; i_interp++) {
-              double weight_bridge = float(i_interp + 1) / (num_interp + 1);
-              double weight_stretch = 1.0 - weight_bridge;
-
-              Eigen::RowVector3d vec_interp = weight_bridge * vec_bridge + weight_stretch * vec_stretch;
-              Eigen::RowVector3d pos_interp = weight_bridge * f->n_bridge->pos + weight_stretch * f->pos_stretch_mid;
-              f->pos_interps.push_back(pos_interp);
-
-              Eigen::RowVector3d vec_left = f->e_bridge_left->halfedge->vector();
-              Eigen::RowVector3d pos_bridge_left = f->e_bridge_left->halfedge->node->pos;
-              Eigen::RowVector3d pos_left = get_intersection(pos_interp, pos_bridge_left,
-                                                             vec_interp, vec_left);
-
-              Eigen::RowVector3d vec_right = f->e_bridge_right->halfedge->vector();
-              Eigen::RowVector3d pos_bridge_right = f->e_bridge_right->halfedge->node->pos;
-              Eigen::RowVector3d pos_right = get_intersection(pos_interp, pos_bridge_right,
-                                                              vec_interp, vec_right);
-
-              auto n_interp_left = new Node();
-              n_interp_left->pos = pos_left;
-              n_interp_left->i_interp = i_interp;
-              f->e_bridge_left->nodes_interp_as_left.push_back(n_interp_left);
-
-              auto n_interp_right = new Node();
-              n_interp_right->pos = pos_right;
-              n_interp_right->i_interp = i_interp;
-              f->e_bridge_right->nodes_interp_as_right.push_back(n_interp_right);
-
 
             }
-
           }
-
         }
 
       }
 
       if (ImGui::Button("merge")) {
 
-        viewer.data().point_size = 1.0;
+        viewer.data().point_size = 3.0;
+        redraw();
 
         for (auto f : faces) {
+          if (f->is_external) continue;
           Edge* e = f->e_bridge_left;
-          if (not e) continue;
 
-          if (e->nodes_interp_as_left.size() != e->nodes_interp_as_right.size())
-            cout<<"left!=right"<<endl;
-
-          Face* f_left;
-          Halfedge* h = e->halfedge;
-          if (h->face == f) f_left = h->twin->face;
-          else f_left = h->face;
-
+          Face* f_left = (e->halfedge->face == f) ?
+            e->halfedge->twin->face :
+            e->halfedge->face;
           f->left = f_left;
           f_left->right = f;
 
 
-          for (int i = 0; i < e->nodes_interp_as_left.size(); i++) {
-            Node* n_as_left = e->nodes_interp_as_left[i];
-            Node* n_as_right = e->nodes_interp_as_right[i];
+          if (e->nodes_interp_as_left.size() != e->nodes_interp_as_right.size())
+            cout<<"left!=right"<<endl;
 
-            if (not f->is_up) {
-              n_as_left = e->nodes_interp_as_left[e->nodes_interp_as_left.size() - i - 1];
+
+
+          for (int i = 0; i < max(e->nodes_interp_as_left.size(), e->nodes_interp_as_right.size()); i++) {
+            Node *n_mid = new Node();
+            Node *n_as_left;
+            Node *n_as_right;
+            bool exist_as_left = false;
+            bool exist_as_right = false;
+
+            if (i < e->nodes_interp_as_left.size()) {
+              n_as_left = f->is_up ?
+                                e->nodes_interp_as_left[i]
+                                : e->nodes_interp_as_left[e->nodes_interp_as_left.size() - i - 1];
+              exist_as_left = true;
             }
 
-            if (not f_left->is_up) {
-              n_as_right = e->nodes_interp_as_right[e->nodes_interp_as_left.size() - i - 1];
+            if (i < e->nodes_interp_as_right.size()) {
+              n_as_right = f_left->is_up ?
+                                 e->nodes_interp_as_right[i]
+                                 : e->nodes_interp_as_right[e->nodes_interp_as_left.size() - i - 1];
+              exist_as_right = true;
             }
 
-            Eigen::RowVector3d pos_interp = (n_as_left->pos + n_as_right->pos) / 2.;
-            viewer.data().add_points(pos_interp, color_red);
-            Node *n_avg = new Node();
-            n_avg->pos = pos_interp;
-            n_avg->i_interp = n_as_left->i_interp;
-            e->nodes_interp.push_back(n_avg);
+            if (exist_as_left and exist_as_right)
+              n_mid->pos = (n_as_left->pos + n_as_right->pos) / 2.;
+            else if (exist_as_left)
+              n_mid->pos = n_as_left->pos;
+            else if (exist_as_right)
+              n_mid->pos = n_as_right->pos;
 
+            e->nodes_interp.push_back(n_mid);
+
+            viewer.data().add_points(n_mid->pos, color_red);
           }
         }
 
@@ -1659,6 +1718,7 @@ int main(int argc, char **argv) {
             f->e_bridge_left->nodes_interp[i]->right = f->e_bridge_right->nodes_interp[i];
             f->e_bridge_right->nodes_interp[i]->left = f->e_bridge_left->nodes_interp[i];
           }
+
         }
       }
 
@@ -1673,71 +1733,72 @@ int main(int argc, char **argv) {
         viewer.data().labels_strings.clear();
 
         bool is_first = true;
-        for (int i_fs = 0; i_fs < iso_faces.size(); i_fs++) {
-          vector<Face*> fs = iso_faces[i_fs];
 
-          Face* f = fs[0];
+        for (auto iso_faces_loops : iso_faces) {
 
-          do {  // bottom line of each iso triangles
-            if (is_first) {
-              printing_path.push_back(f->n_stretch_left);
-              f->n_stretch_left->is_move = true;
-              is_first = false;
-            }
-            f->n_stretch_right->shrinkage = f->e_stretch->shrinkage;
+          for (int i_fs = 0; i_fs < iso_faces_loops.size(); i_fs++) {
+            vector<Face *> fs = iso_faces_loops[i_fs];
 
-            if (f->is_up) {
-              printing_path.push_back(f->n_stretch_right);
-            }
+            Face *f = fs[0];
 
-            viewer.data().add_edges(f->n_stretch_left->pos, f->n_stretch_right->pos, color_green);
-            f = f->right;
-          } while (f != fs[0]);
+            do {  // bottom line of each iso triangles
+              if (is_first) {
+                printing_path.push_back(f->n_stretch_left);
+                f->n_stretch_left->is_move = true;
+                is_first = false;
+              }
+              f->n_stretch_right->shrinkage = f->e_stretch->shrinkage;
 
-          // connect bottom line to first interpolated line
-          if (f->is_up) {
-            if (not f->e_bridge_left->nodes_interp.empty()) {
-              printing_path.push_back(f->e_bridge_left->nodes_interp[0]);
-              viewer.data().add_edges(f->n_stretch_left->pos, f->e_bridge_left->nodes_interp[0]->pos, color_green);
-            }
-          }
-          else {
-            printing_path.push_back(f->e_bridge_left->nodes_interp[0]);
-            viewer.data().add_edges(f->n_bridge->pos, f->e_bridge_left->nodes_interp[0]->pos, color_green);
-          }
+              if (f->is_up) {
+                printing_path.push_back(f->n_stretch_right);
+              }
 
-          // each interpolated line
-          for (int i_interp = 0; i_interp < fs[0]->e_bridge_left->nodes_interp.size(); i_interp++) {
-            f = fs[0];
-            do {  // all interpolated lines
-              printing_path.push_back(f->e_bridge_right->nodes_interp[i_interp]);
-              f->e_bridge_right->nodes_interp[i_interp]->shrinkage = f->e_stretch->shrinkage;
-              viewer.data().add_edges(f->e_bridge_left->nodes_interp[i_interp]->pos,
-                f->e_bridge_right->nodes_interp[i_interp]->pos, color_red);
+              viewer.data().add_edges(f->n_stretch_left->pos, f->n_stretch_right->pos, color_green);
               f = f->right;
             } while (f != fs[0]);
 
-            // connect interpolated node to the upper line
-            if (i_interp + 1 < fs[0]->e_bridge_left->nodes_interp.size()) {
-              printing_path.push_back(f->e_bridge_left->nodes_interp[i_interp + 1]);
-              viewer.data().add_edges(f->e_bridge_left->nodes_interp[i_interp]->pos,
-                f->e_bridge_left->nodes_interp[i_interp + 1]->pos, color_green);
+            // connect bottom line to first interpolated line
+            if (f->is_up) {
+              if (not f->e_bridge_left->nodes_interp.empty()) {
+                printing_path.push_back(f->e_bridge_left->nodes_interp[0]);
+                viewer.data().add_edges(f->n_stretch_left->pos, f->e_bridge_left->nodes_interp[0]->pos, color_green);
+              }
+            } else {
+              printing_path.push_back(f->e_bridge_left->nodes_interp[0]);
+              viewer.data().add_edges(f->n_bridge->pos, f->e_bridge_left->nodes_interp[0]->pos, color_green);
             }
-            else {
-              if (f->is_up) {
-                printing_path.push_back(f->n_bridge);
+
+            // each interpolated line
+            for (int i_interp = 0; i_interp < fs[0]->e_bridge_left->nodes_interp.size(); i_interp++) {
+              f = fs[0];
+              do {  // all interpolated lines
+                printing_path.push_back(f->e_bridge_right->nodes_interp[i_interp]);
+                f->e_bridge_right->nodes_interp[i_interp]->shrinkage = f->e_stretch->shrinkage;
                 viewer.data().add_edges(f->e_bridge_left->nodes_interp[i_interp]->pos,
-                                        f->n_bridge->pos, color_green);
-              }
-              else {
-                printing_path.push_back(f->n_stretch_left);
+                                        f->e_bridge_right->nodes_interp[i_interp]->pos, color_red);
+                f = f->right;
+              } while (f != fs[0]);
+
+              // connect interpolated node to the upper line
+              if (i_interp + 1 < fs[0]->e_bridge_left->nodes_interp.size()) {
+                printing_path.push_back(f->e_bridge_left->nodes_interp[i_interp + 1]);
                 viewer.data().add_edges(f->e_bridge_left->nodes_interp[i_interp]->pos,
-                                        f->n_stretch_left->pos, color_green);
+                                        f->e_bridge_left->nodes_interp[i_interp + 1]->pos, color_green);
+              } else {
+                if (f->is_up) {
+                  printing_path.push_back(f->n_bridge);
+                  viewer.data().add_edges(f->e_bridge_left->nodes_interp[i_interp]->pos,
+                                          f->n_bridge->pos, color_green);
+                } else {
+                  printing_path.push_back(f->n_stretch_left);
+                  viewer.data().add_edges(f->e_bridge_left->nodes_interp[i_interp]->pos,
+                                          f->n_stretch_left->pos, color_green);
+                }
               }
+
             }
 
           }
-
         }
       }
 
@@ -1748,7 +1809,6 @@ int main(int argc, char **argv) {
           for (auto n : printing_path) {
             Eigen::RowVector3d p = n->pos;
             ofile<<p.x()<<" "<<p.y()<<" "<<n->is_move<<" "<<n->shrinkage<<endl;
-
           }
         }
 
