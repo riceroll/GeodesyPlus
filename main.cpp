@@ -70,7 +70,7 @@ struct Node {
 
   // for printing
   bool is_move = false; // extrude
-  float shrinkage = 0.07; // minimum shrinkage
+  float shrinkage = 0.15; // minimum shrinkage
 };
 
 
@@ -86,7 +86,7 @@ struct Edge {
 
   set<Node*> nodes;
   Halfedge* halfedge = nullptr;
-  vector<Node*> nodes_interp_as_left{};
+  vector<Node*> nodes_interp_as_left{};   // begin from e->stretch
   vector<Node*> nodes_interp_as_right{};
   vector<Node*> nodes_interp{};
 
@@ -168,9 +168,10 @@ int main(int argc, char **argv) {
   vector<vector<Node *>> boundaries_top;
   vector<vector<Node *>> boundaries_saddle;
   vector<Node*> boundary_bottom;
+  vector<Node*> saddles;
 
   vector<vector<vector<Node *>>> isos_node;  // iso -> loop -> Node
-  vector<vector<vector<Face *>>> iso_faces; // iso -> loop -> Face
+  vector<vector<vector<Face *>>> iso_faces;  // iso -> loop -> Face
   vector<vector<Node*>> segments{}; // for merging
   set<Node*> unvisited{};    // for tracing
   vector<Node*> unvisited_vector{}; // for tracing
@@ -305,6 +306,13 @@ int main(int argc, char **argv) {
         else if (label_type == 2)   // grad line
           viewer.data().add_label(n->pos, to_string(n->idx_grad));
       }
+
+      if (label_type == 3) {
+        for (auto n : printing_path) {
+            viewer.data().add_label(n->pos, to_string(n->is_end));
+        }
+      }
+
 
       for (auto e : edges) {
         if (display_mode == 3 or display_mode == 4) continue; // segments or trace
@@ -541,8 +549,7 @@ int main(int argc, char **argv) {
       Eigen::MatrixXd p2s(printing_path.size()-1, 3);
       Eigen::MatrixXd colors(printing_path.size()-1, 3);
 
-      for (int i = 0; i < num_iter ; i ++) {
-        if (i > printing_path.size() - 2) break;
+      for (int i = 0; i < printing_path.size() - 1 ; i ++) {
         Eigen::RowVector3d color = get_color(printing_path[i+1]->shrinkage);
 
         p1s.row(i) = printing_path[i]->pos;
@@ -738,21 +745,21 @@ int main(int argc, char **argv) {
     if (find_the_other_face(h_a->node, h_c->node, &ns_triplet, &es_triplet)) {
 //      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos) / 3,
 //                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos) / 3,
-//                               Eigen::RowVector3d(0.9,0.9,0)
+//                               color_red
 //      );
       complete_face(es_triplet, ns_triplet);
     }
     if (find_the_other_face(h_c->node, h_b->node, &ns_triplet, &es_triplet)) {
 //      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos) / 3,
 //                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos) / 3,
-//                               Eigen::RowVector3d(0,0.9,0.9)
+//                               color_green
 //      );
       complete_face(es_triplet, ns_triplet);
     }
     if (find_the_other_face(h_b->node, h_a->node, &ns_triplet, &es_triplet)) {
 //      viewer.data().add_edges( (ns[0]->pos + ns[1]->pos + ns[2]->pos) / 3,
 //                               (ns_triplet[0]->pos + ns_triplet[1]->pos + ns_triplet[2]->pos) / 3,
-//                               Eigen::RowVector3d(0.9,0,0.9)
+//                               color_blue
 //      );
       complete_face(es_triplet, ns_triplet);
     }
@@ -881,6 +888,230 @@ int main(int argc, char **argv) {
     printing_path.push_back(n_iter);
   };
 
+  auto get_links = [&](int num_interp_left, int num_interp_right)
+                    -> vector<vector<int>> {
+    // num_interp_left : # of interpolated nodes on the left
+    if (num_interp_left % 2 != 0 or num_interp_right % 2 != 0) {
+      cout<<"not even"<<endl; getchar();
+    }
+
+    set<int> unlinked_left;
+    set<int> unlinked_right;
+    vector<vector<int>> potential_links;
+    vector<pair<int, double>> idx_dist;
+    vector<vector<int>> links;
+
+    num_interp_left /= 2;   // double gap size, insert odd number later
+    num_interp_right /= 2;
+    double gap_left = 1.0 / (num_interp_left + 1);
+    double gap_right = 1.0 / (num_interp_right + 1);
+
+    // init
+    for (int i=0; i<num_interp_left; i++)   unlinked_left.insert(i);
+    for (int i=0; i<num_interp_right; i++)  unlinked_right.insert(i);
+
+    // (unlinked_left, unlinked_right) -> potential_links, idx_dist
+    for (int i_left = 0; i_left < num_interp_left; i_left++) {
+      double t_left = (i_left + 1) * gap_left;
+      int i_right_prev = int(t_left / gap_right) - 1;
+      int i_right_next = i_right_prev + 1;
+      double t_right_prev = (i_right_prev + 1) * gap_right;
+      double t_right_next = (i_right_next + 1) * gap_right;
+
+      if (i_right_prev < 0 ) {
+        // right_prev not exist
+      }
+      else {
+        idx_dist.push_back(pair<int, double>({
+          potential_links.size(),
+          t_left - t_right_prev
+        }));
+
+        potential_links.push_back(vector<int>({i_left, i_right_prev}));
+      }
+
+      if (i_right_next > num_interp_right - 1) {
+        // overflow
+      }
+      else {
+        idx_dist.push_back(pair<int, double>({
+          potential_links.size(),
+          t_right_next - t_left
+        }));
+
+        potential_links.push_back(vector<int>({i_left, i_right_next}));
+      }
+    }
+
+    // sort idx_dist
+    sort(idx_dist.begin(), idx_dist.end(),
+      [](const pair<int, double> a, const pair<int, double> b){
+      return a.second < b.second;
+    });
+
+    // (idx_dist, potential_links, unlinked_left, unlinked_right) -> links
+    for (pair<int,double> i_d : idx_dist) {
+      int idx = i_d.first;
+      vector<int> p = potential_links[idx];
+      if (unlinked_left.count(p[0]) and unlinked_right.count(p[1])) { // both unlinked
+        unlinked_left.erase(p[0]);
+        unlinked_right.erase(p[1]);
+        links.push_back(p);
+      }
+      else {
+        // one of them is already linked
+      }
+    }
+
+    // insert odd nodes
+    vector<vector<int>> links_double;
+    for (auto link : links) {
+      links_double.push_back(vector<int>({link[0]*2, link[1]*2}));
+      links_double.push_back(vector<int>({link[0]*2+1, link[1]*2+1}));
+    }
+
+    return links_double;
+  };
+
+  auto merge_edge = [&](Edge* e, Face* f, Face* f_left, Halfedge* h) {
+    // update e->nodes_interp
+
+
+    // (e, f, f_left) -> nodes_interp_left, nodes_interp_right
+    vector<Node*> nodes_interp_left;
+    vector<Node*> nodes_interp_right;
+    {
+      if (f_left->is_up) {
+        nodes_interp_left = e->nodes_interp_as_right;
+      } else {
+        reverse(e->nodes_interp_as_right.begin(), e->nodes_interp_as_right.end());
+        nodes_interp_left = e->nodes_interp_as_right;
+        reverse(e->nodes_interp_as_right.begin(), e->nodes_interp_as_right.end());
+      }
+
+      if (f->is_up) {
+        nodes_interp_right = e->nodes_interp_as_left;
+      } else {
+        reverse(e->nodes_interp_as_left.begin(), e->nodes_interp_as_left.end());
+        nodes_interp_right = e->nodes_interp_as_left;
+        reverse(e->nodes_interp_as_left.begin(), e->nodes_interp_as_left.end());
+      }
+    }
+
+    vector<vector<int>> links = get_links(nodes_interp_left.size(), nodes_interp_right.size());
+
+    // (nodes_interp_left, nodes_interp_right, links) -> e->nodes_interp
+    {
+      set<int> unvisited_left;
+      set<int> unvisited_right;
+      for (int i = 0; i < nodes_interp_left.size(); i++) unvisited_left.insert(i);
+      for (int i = 0; i < nodes_interp_right.size(); i++) unvisited_right.insert(i);
+
+      // left
+      for (int i = 0; i < nodes_interp_left.size(); i++) {
+        Node *n_mid = new Node();
+        Node *n_left;
+        Node *n_right;
+
+        if (i < nodes_interp_left.size() and unvisited_left.count(i)) {   // left exists and unvisted
+          n_left = nodes_interp_left[i];
+          bool linked = false;
+          int i_right = -1;
+          for (auto link : links) {
+            if (link[0] == i) {
+              linked = true;
+              i_right = link[1];
+              break;
+            }
+          }
+          if (linked) {
+            n_right = nodes_interp_right[i_right];
+            // link left i with right i_right
+            n_mid->pos = (n_left->pos + n_right->pos) / 2.;
+            n_mid->left = n_left->left;   // TODO: bug?
+            n_mid->right = n_right->right;
+            n_mid->left->right = n_mid;
+            n_mid->right->left = n_mid;
+            // visit left i and right i_right
+            unvisited_left.erase(i);
+            unvisited_right.erase(i_right);
+          } else {
+            // link left i
+            n_mid->pos = n_left->pos;
+            n_mid->left = n_left->left;
+            n_mid->left->right = n_mid;
+            n_mid->is_end = true;
+            n_mid->is_right_end = true;
+          }
+          e->nodes_interp.push_back(n_mid);
+
+          unvisited.emplace(n_mid); // TODO
+          n_mid->i_unvisited_vector = unvisited_vector.size();  // TODO
+          n_mid->is_interp_bridge = true; // TODO
+          unvisited_vector.push_back(n_mid); // TODO
+        }
+      }
+
+      // right
+      for (int i = 0; i < nodes_interp_right.size(); i++) {
+        Node *n_mid = new Node();
+        Node *n_left;
+        Node *n_right;
+
+        if (i < nodes_interp_right.size() and unvisited_right.count(i)) {   // right exists and unvisted
+          n_right = nodes_interp_right[i];
+          bool linked = false;
+          int i_left = -1;
+          for (auto link : links) {
+            if (link[1] == i) {
+              linked = true;
+              i_left = link[0];
+              break;
+            }
+          }
+          if (linked) {
+            n_left = nodes_interp_right[i_left];
+            // link right i with left i_left
+            n_mid->pos = (n_left->pos + n_right->pos) / 2.;
+            n_mid->left = n_left->left;   // TODO: bug?
+            n_mid->right = n_right->right;
+            n_mid->left->right = n_mid;
+            n_mid->right->left = n_mid;
+            // visit left i_left and right i
+            unvisited_left.erase(i_left);
+            unvisited_right.erase(i);
+          } else {
+            // link right i
+            n_mid->pos = n_right->pos;
+            n_mid->right = n_right->right;
+            n_mid->right->left = n_mid;
+            n_mid->is_end = true;
+            n_mid->is_left_end = true;
+          }
+          e->nodes_interp.push_back(n_mid);
+
+          unvisited.emplace(n_mid); // TODO
+          n_mid->i_unvisited_vector = unvisited_vector.size();  // TODO
+          n_mid->is_interp_bridge = true; // TODO
+          unvisited_vector.push_back(n_mid); // TODO
+        }
+      }
+    }
+
+    // order e->nodes_interp
+    {
+      sort(e->nodes_interp.begin(), e->nodes_interp.end(),
+           [&](const Node*  a, const Node*  b)->bool {
+             double d_a = (a->pos - h->twin->node->pos).norm();
+             double d_b = (b->pos - h->twin->node->pos).norm();
+             return d_a > d_b;
+           }
+      );
+    }
+
+
+  };
+
   //////////////// menu funcs /////////////////
 
   auto initialize_param = [&]() {
@@ -992,7 +1223,7 @@ int main(int argc, char **argv) {
 
 
       // top boundary
-      if (!n->up) {
+      if (!n->up and (not (n->on_saddle_boundary and (not (n->down))))) {   // avoid the case saddle connected with top
         bool in_boundary = false; // already in boundary
         for (auto b : boundaries_top) {
           for (auto n_b : b) {
@@ -1007,12 +1238,11 @@ int main(int argc, char **argv) {
           vector<Node *> boundary_top;
           bool is_boundary = true;
           Node *node_iter = n;
-
           cout<<"extract the boundary: "<<node_iter->idx<<endl;
+
           while (true) {  // extract the whole boundary
             cout<<node_iter->idx<<endl;
             if (node_iter->up) {
-              cout<<"node_iter->up"<<endl;
               is_boundary = false;
               boundary_top.clear();
               break;
@@ -1020,11 +1250,9 @@ int main(int argc, char **argv) {
             boundary_top.push_back(node_iter);
 
             if (node_iter->right == n) {  // close the boundary
-              cout<<"node_iter->right == n"<<endl;
               break;
             }
             node_iter = node_iter->right;
-            cout<<"node_iter = node_iter->right"<<endl;
           }
 
           if (is_boundary) {
@@ -1043,8 +1271,13 @@ int main(int argc, char **argv) {
             n_center->is_cone = true;
             nodes.push_back(n_center);
 
+            int i = 0;
             for (auto nb : boundary_top) {
               add_edge(nb, n_center, "bridge");
+
+              Node* nb_next = boundary_top[(i + 1) % boundary_top.size()];
+              add_edge(nb, nb_next, "stretch");   // fix the case saddle and top connected
+              i++;
             }
           } else {
             // TODO: two iso lines sharing a hole but no node has a downward connection
@@ -1137,6 +1370,7 @@ int main(int argc, char **argv) {
         n_center->idx_grad = -1;
         n_center->is_saddle = true;
         nodes.push_back(n_center);
+        saddles.push_back(n_center);
 
         for (auto n_iter : saddle_boundary) {
           add_edge(n_iter, n_center, "bridge");
@@ -1157,7 +1391,6 @@ int main(int argc, char **argv) {
     cout<<"upsampling.....";
     for (auto n : nodes) {
       subdivide_edge(n);
-
     }
     cout<<"done."<<endl;
     triangulate();
@@ -1170,7 +1403,6 @@ int main(int argc, char **argv) {
     vector<Node *> ns_triplet;
     vector<Edge *> es_triplet;
     // find first triangle
-    cout<<"a"<<endl;
     for (Node *n_a : nodes) {
       Node *n_b = n_a->up;
       if (!n_b) continue;
@@ -1207,12 +1439,10 @@ int main(int argc, char **argv) {
       }
       if (!edge_exist) continue;
     }
-    cout<<"b"<<endl;
 
     // function: bfs_halfedge_mesh iterate through whole mesh
     // given triplets, output, complete a face
     complete_face(es_triplet, ns_triplet);
-    cout<<"c"<<endl;
 
     // external face & boundary halfedges
     {
@@ -1284,7 +1514,7 @@ int main(int argc, char **argv) {
     }
     cout<<"done."<<endl;
     display_mode = 1;
-    redraw();
+//    redraw();
   };
 
   auto step = [&]() {
@@ -1340,6 +1570,13 @@ int main(int argc, char **argv) {
       if (not e->halfedge->node) {
         cout<<"no halfedge->node"<<e->idx<<endl; getchar();
       }
+      if (not e->halfedge->twin) {
+        cout<<"no twin"<<e->idx<<endl; cout<<" "<<e->halfedge->node->idx<<endl; getchar();
+      }
+      if (not e->halfedge->twin->node) {
+        cout<<"no twin node"<<e->idx<<endl; cout<<" "<<e->halfedge->node->idx<<endl; getchar();
+      }
+
       id_vector.push_back(e->halfedge->node->idx);
       id_vector.push_back(e->halfedge->twin->node->idx);
       auto weight = w_stretch;
@@ -1634,7 +1871,8 @@ int main(int argc, char **argv) {
         if (ImGui::RadioButton("node", &label_type, 0) or
             ImGui::RadioButton("iso", &label_type, 1) or
             ImGui::RadioButton("grad", &label_type, 2) or
-            ImGui::RadioButton("num_interp", &label_type, 3)
+            ImGui::RadioButton("num_interp", &label_type, 3) or
+            ImGui::RadioButton("is_end", &label_type, 4)
           ) {
           redraw();
         }
@@ -1704,6 +1942,12 @@ int main(int argc, char **argv) {
 
       if (ImGui::Button("upsample")) {
         upsample();
+      }
+
+      if (ImGui::Button("subdivide")) {
+        for (auto n : nodes) {
+          subdivide_edge(n);
+        }
       }
 
       if (ImGui::Button("triangulate")) {
@@ -1875,7 +2119,6 @@ int main(int argc, char **argv) {
 
             Face *f_begin = f_iter;
             do {
-
               f_iter->visited_interpolation =true;
               loop_face.push_back(f_iter);
 
@@ -2220,6 +2463,14 @@ int main(int argc, char **argv) {
           f->left = f_left;
           f_left->right = f;
 
+          Halfedge* h = (e->halfedge->face == f) ?
+            e->halfedge->twin :
+            e->halfedge;
+
+          // new
+//          merge_edge(e, f, f_left, h);
+
+          // old
           for (int i = 0; i < max(e->nodes_interp_as_left.size(), e->nodes_interp_as_right.size()); i++) {
             Node *n_mid = new Node();
             Node *n_as_left;
@@ -2270,28 +2521,105 @@ int main(int argc, char **argv) {
           }
         }
 
+
         cout<<"connect left and right"<<endl;
         // connect left and right
         for (auto f : faces) {
           if (f->is_external) continue;
           if (f->is_saddle) continue;
 
-          for (int i = 0; i < min(f->e_bridge_left->nodes_interp.size(), f->e_bridge_right->nodes_interp.size()); i++) {
-            f->e_bridge_left->nodes_interp[i]->right = f->e_bridge_right->nodes_interp[i];
-            f->e_bridge_right->nodes_interp[i]->left = f->e_bridge_left->nodes_interp[i];
-            vector<Node*> segment{};
-            if (f->e_bridge_left->nodes_interp[i]->is_right_end and
-                f->e_bridge_left->nodes_interp[i]->right->is_left_end) {
-              f->e_bridge_left->nodes_interp[i]->is_right_end = false;
-              f->e_bridge_left->nodes_interp[i]->is_end = false;
-              f->e_bridge_left->nodes_interp[i]->right->is_left_end = false;
-              f->e_bridge_left->nodes_interp[i]->right->is_end = false;
+          // new
+          int i_left = 0;
+          int i_right = 0;
+          while (true) {
+            if (i_left >= f->e_bridge_left->nodes_interp.size()) {
+              break;
+            }
+            if (i_right >= f->e_bridge_right->nodes_interp.size()) {
+              break;
             }
 
-            segment.push_back(f->e_bridge_left->nodes_interp[i]);
-            segment.push_back(f->e_bridge_left->nodes_interp[i]->right);
+            Node* n_left = f->e_bridge_left->nodes_interp[i_left];
+            Node* n_right = f->e_bridge_right->nodes_interp[i_right];
+
+            if (n_left->is_right_end) {
+              i_left += 1;
+              continue;
+            }
+
+            if (n_right->is_left_end) {
+              i_right += 1;
+              continue;
+            }
+
+
+            n_left->right = n_right;
+            n_right->left = n_left;
+
+            vector<Node*> segment{};
+            segment.push_back(n_left);
+            segment.push_back(n_right);
             segments.push_back(segment);
+
+            i_left += 1;
+            i_right += 1;
           }
+
+          // new 2
+//          for (int i = 0; i < max(f->e_bridge_left->nodes_interp.size(), f->e_bridge_right->nodes_interp.size()); i++) {
+//            if (i < f->e_bridge_left->nodes_interp.size() and i < f->e_bridge_right->nodes_interp.size()) {
+//
+//              f->e_bridge_left->nodes_interp[i]->right = f->e_bridge_right->nodes_interp[i];
+//              f->e_bridge_right->nodes_interp[i]->left = f->e_bridge_left->nodes_interp[i];
+//
+//              f->e_bridge_left->nodes_interp[i]->is_end = false;
+//              f->e_bridge_left->nodes_interp[i]->is_right_end = false;
+//              f->e_bridge_right->nodes_interp[i]->is_end = false;
+//              f->e_bridge_right->nodes_interp[i]->is_left_end = false;
+//
+//              vector<Node *> segment{};
+//              segment.push_back(f->e_bridge_left->nodes_interp[i]);
+//              segment.push_back(f->e_bridge_left->nodes_interp[i]->right);
+//              segments.push_back(segment);
+//
+////              if (f->e_bridge_left->nodes_interp[i]->is_right_end and
+////                  f->e_bridge_left->nodes_interp[i]->right->is_left_end) {
+////                f->e_bridge_left->nodes_interp[i]->is_right_end = false;
+////                f->e_bridge_left->nodes_interp[i]->is_end = false;
+////                f->e_bridge_left->nodes_interp[i]->right->is_left_end = false;
+////                f->e_bridge_left->nodes_interp[i]->right->is_end = false;
+////              }
+//
+//            }
+//            else if (i < f->e_bridge_left->nodes_interp.size()) { // left exist
+//              f->e_bridge_left->nodes_interp[i]->is_end = true;
+//              f->e_bridge_left->nodes_interp[i]->is_right_end = true;
+//            }
+//            else {
+//              f->e_bridge_right->nodes_interp[i]->is_end = true;
+//              f->e_bridge_right->nodes_interp[i]->is_left_end = true;
+//            }
+//
+//          }
+
+          //old
+//          for (int i = 0; i < min(f->e_bridge_left->nodes_interp.size(), f->e_bridge_right->nodes_interp.size()); i++) {
+//            f->e_bridge_left->nodes_interp[i]->right = f->e_bridge_right->nodes_interp[i];
+//            f->e_bridge_right->nodes_interp[i]->left = f->e_bridge_left->nodes_interp[i];
+//
+//            vector<Node*> segment{};
+//            if (f->e_bridge_left->nodes_interp[i]->is_right_end and
+//                f->e_bridge_left->nodes_interp[i]->right->is_left_end) {
+//              f->e_bridge_left->nodes_interp[i]->is_right_end = false;
+//              f->e_bridge_left->nodes_interp[i]->is_end = false;
+//              f->e_bridge_left->nodes_interp[i]->right->is_left_end = false;
+//              f->e_bridge_left->nodes_interp[i]->right->is_end = false;
+//            }
+//
+//            segment.push_back(f->e_bridge_left->nodes_interp[i]);
+//            segment.push_back(f->e_bridge_left->nodes_interp[i]->right);
+//            segments.push_back(segment);
+//          }
         }
 
         cout<<"connect up and down within nodes_interp"<<endl;
@@ -2361,7 +2689,6 @@ int main(int argc, char **argv) {
 
         cout<<"connect two end nodes"<<endl;
         // connect two end nodes of the double back
-
         for (auto f : faces) {
           if (f->is_external) continue;
           if (f->is_saddle) continue;
@@ -2384,7 +2711,8 @@ int main(int argc, char **argv) {
                 n_down->pos * (num_interp_new - i_interp) / (num_interp_new + 1)
                 + n_up->pos * (i_interp + 1) / (num_interp_new + 1);
             }
-            f->e_bridge_left->nodes_interp[num_interp_new]->pos = f->e_bridge_left->nodes_interp[num_interp_new - 1]->pos;
+            f->e_bridge_left->nodes_interp[num_interp_new]->pos =
+              f->e_bridge_left->nodes_interp[num_interp_new - 1]->pos;
 
           }
         }
@@ -2408,7 +2736,7 @@ int main(int argc, char **argv) {
             iso_min = 1e8;
             for (auto n : nodes) {
               if (not unvisited.count(n)) continue;
-              if (n->is_cone or n->is_saddle) {
+              if (n->is_cone or n->is_saddle or n->on_saddle_boundary) {
                 unvisited.erase(n);
                 continue;
               }
@@ -2582,7 +2910,6 @@ int main(int argc, char **argv) {
 
               // horizontal traces
               if (move_horizontally) {
-
 //                if (n_iter->right and unvisited.count(n_iter->right)) {
 //                  n_iter = n_iter->right;
 //                } else if (n_iter->left and unvisited.count(n_iter->left)) {
@@ -2812,6 +3139,185 @@ int main(int argc, char **argv) {
         num_iter = printing_path.size();
         display_mode = 4;
         redraw();
+      }
+
+      if (ImGui::Button("trace_saddle")) {
+        cout<<"start trace saddles..."<<endl;
+
+        for (auto n_saddle : saddles) {
+          cout<<"detect saddle "<<n_saddle->idx<<endl;
+
+          // collect halfedges_saddle
+          vector<Halfedge*> halfedges_saddle;
+          {
+            halfedges_saddle = get_halfedges_of_node(n_saddle);
+            for (int i = 0; i < halfedges_saddle.size(); i++) {
+              halfedges_saddle[i] = halfedges_saddle[i]->twin;  // get the halfedge pointing at saddle
+            }
+          }
+
+          // compute f->num_interp
+          int num_interp_max = -1;
+          for (auto h : halfedges_saddle) {
+            Face *f = h->face;
+            Eigen::RowVector3d normal = f->normal();
+            Eigen::RowVector3d vec_height = normal.cross(h->prev->vector());
+            vec_height.normalize();
+
+            Eigen::RowVector3d vec_mid = h->prev->edge->centroid() - h->next->node->pos;
+            double iso_distance = abs(vec_mid.dot(vec_height));
+            f->num_interp = int(iso_distance / (2 * gap_size)) * 2;
+
+            if (f->num_interp > num_interp_max) num_interp_max = f->num_interp;
+          }
+
+          // assign edges and nodes for the face
+          for (auto h : halfedges_saddle) {
+            Face* f = h->face;
+            f->e_stretch = h->prev->edge;
+            f->e_bridge_left = h->next->edge;
+            f->e_bridge_right = h->edge;
+            f->n_bridge = h->next->node;
+            f->n_stretch_left = h->prev->node;
+            f->n_stretch_right = h->node;
+            f->pos_stretch_mid = f->e_stretch->centroid();
+            f->is_up = true;   // TODO
+          }
+
+          // interpolate
+          for (auto h : halfedges_saddle) {
+            Face* f = h->face;
+            for (int i_interp = 0; i_interp < f->num_interp; i_interp++) {
+              double weight_bridge = float(i_interp + 1) / (f->num_interp + 1);
+              double weight_stretch = 1.0 - weight_bridge;
+
+              // fix
+              // Eigen::RowVector3d vec_interp = weight_bridge * f->vec_bridge + weight_stretch * f->vec_stretch;
+              Eigen::RowVector3d vec_interp = f->n_stretch_left->pos - f->n_stretch_right->pos;
+              vec_interp.normalize();
+
+              Eigen::RowVector3d pos_interp = weight_bridge * f->n_bridge->pos + weight_stretch * f->pos_stretch_mid;
+              f->pos_interps.push_back(pos_interp);
+
+              Eigen::RowVector3d vec_left = f->e_bridge_left->halfedge->vector();
+              if (f->e_bridge_left->halfedge->node != f->n_stretch_left) {
+                vec_left = f->e_bridge_left->halfedge->twin->vector();
+              }
+              Eigen::RowVector3d pos_left = get_intersection(f->n_stretch_left->pos, pos_interp,
+                                                             vec_left, vec_interp);
+
+              Eigen::RowVector3d vec_right = f->e_bridge_right->halfedge->vector();
+              if (f->e_bridge_right->halfedge->node != f->n_stretch_right) {
+                vec_right = f->e_bridge_right->halfedge->twin->vector();
+              }
+              Eigen::RowVector3d pos_right = get_intersection(f->n_stretch_right->pos, pos_interp,
+                                                              vec_right, vec_interp);
+
+              // TODO: interact out of the bridge edges
+              auto n_interp_left = new Node();
+              auto n_interp_right = new Node();
+
+              // connect interp_left with up and down
+              {
+                n_interp_left->pos = pos_left;
+                int i_prev = f->e_bridge_left->nodes_interp_as_left.size() - 1;
+                if (i_prev < 0) {
+                  if (f->is_up) {
+                    n_interp_left->down = f->n_stretch_left;
+                    n_interp_left->down->up = n_interp_left;
+                  } else {
+                    n_interp_left->down = f->n_bridge;
+                  }
+                } else {
+                  n_interp_left->down = f->e_bridge_left->nodes_interp_as_left[i_prev];
+                  n_interp_left->down->up = n_interp_left;
+                }
+
+                if (i_interp == f->num_interp - 1) {
+                  if (f->is_up) {
+                    n_interp_left->up = f->n_bridge;
+                  } else {
+                    n_interp_left->up = f->n_stretch_left;
+                    n_interp_left->up->down = n_interp_left;
+                  }
+                }
+              }
+
+              // connect interp_right with up and down
+              {
+                n_interp_right->pos = pos_right;
+                int i_prev = f->e_bridge_right->nodes_interp_as_right.size() - 1;
+                if (i_prev < 0) {
+                  if (f->is_up) {
+                    n_interp_right->down = f->n_stretch_right;
+                    n_interp_right->down->up = n_interp_right;
+                  } else {
+                    n_interp_right->down = f->n_bridge;
+                  }
+                } else {
+                  n_interp_right->down = f->e_bridge_right->nodes_interp_as_right[i_prev];
+                  n_interp_right->down->up = n_interp_right;
+                }
+
+                if (i_interp == f->num_interp - 1) {
+                  if (f->is_up) {
+                    n_interp_right->up = f->n_bridge;
+                  } else {
+                    n_interp_right->up = f->n_stretch_right;
+                    n_interp_right->up->down = n_interp_right;
+                  }
+                }
+              }
+
+              f->e_bridge_left->nodes_interp_as_left.push_back(n_interp_left);
+              f->e_bridge_right->nodes_interp_as_right.push_back(n_interp_right);
+              n_interp_left->right = n_interp_right;
+              n_interp_right->left = n_interp_left;
+            }
+          }
+
+          // merge
+          for (auto h : halfedges_saddle) {
+            Face* f = h->twin->face;
+            Edge* e = f->e_bridge_left;
+            Face* f_left = (e->halfedge->face == f) ?
+                           e->halfedge->twin->face :
+                           e->halfedge->face;
+            f->left = f_left;
+            f_left->right = f;
+
+            merge_edge(e, f, f_left, h);
+          }
+
+          // collect path
+          vector<Node*> paths;
+          for (int i_interp = -1; i_interp < num_interp_max; i_interp++) {
+            for (auto h : halfedges_saddle) {
+              Edge* e = h->edge;
+              Node *n_interp;
+              if (i_interp == -1) {
+                n_interp = h->node;
+              }
+              else if (i_interp < e->nodes_interp.size() ) {
+                n_interp = e->nodes_interp[i_interp];
+              }
+              else {
+                n_interp = n_saddle;
+              }
+              printing_path.emplace_back(n_interp);
+              paths.emplace_back(n_interp);
+              viewer.data().add_label(n_interp->pos, to_string(i_interp));
+            }
+          }
+
+
+          for (int i = 0; i < paths.size() - 1; i++) {
+            viewer.data().add_edges(paths[i]->pos, paths[i+1]->pos, color_red);
+          }
+
+
+
+        }
       }
 
       if (ImGui::Button("save")) {
