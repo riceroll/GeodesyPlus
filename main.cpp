@@ -15,10 +15,14 @@
 #include <imgui/imgui.h>
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
-//#include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
+#include <igl/ray_mesh_intersect.h>
 #include <igl/unproject_ray.h>
 //#include <igl/colormap.h>
-//#include <igl/avg_edge_length.h>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb/stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb/stb_image_write.h"
 
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
@@ -61,6 +65,7 @@ struct Node {
 
   // for interpolation & merging
   int i_unvisited_vector = -1;
+  int i_path = -1;
   bool visited_interpolation = false;
   bool is_end = false;
   bool is_left_end = false;
@@ -71,6 +76,10 @@ struct Node {
   // for printing
   bool is_move = false; // extrude
   float shrinkage = 0.15; // minimum shrinkage
+
+  // for mapping
+  Eigen::RowVector3d color = Eigen::RowVector3d(1.0, 0.0, 0.0);
+
 };
 
 
@@ -138,6 +147,12 @@ struct Face {
     n.normalize();
     return n;
   }
+  Node* node(int i) {
+    Halfedge* h = this->halfedge;
+    if (i == 0) return h->node;
+    if (i == 1) return h->next->node;
+    if (i == 2) return h->next->next->node;
+  }
 
   // for interpolation
   bool is_up = true;
@@ -159,8 +174,14 @@ struct Face {
 
 int main(int argc, char **argv) {
   // declaration
-  Eigen::MatrixXd V;  // n_vertices * 3d
-  Eigen::MatrixXi F;  // n_faces * 3i
+  Eigen::MatrixXd V_in, TC_in, N_in, FC_in;
+  Eigen::MatrixXi F_in, FTC_in, FN_in;
+
+  Eigen::MatrixXd V_out, TC_out, N_out, FC_out;
+  Eigen::MatrixXi F_out, FTC_out, FN_out;
+
+  Eigen::RowVector3d center;
+
   vector<Node*> nodes;
   vector<Edge*> edges;
   vector<Face*> faces;
@@ -176,7 +197,6 @@ int main(int argc, char **argv) {
   set<Node*> unvisited{};    // for tracing
   vector<Node*> unvisited_vector{}; // for tracing
   vector<Node*> printing_path{};  // for tracing
-
 
   ShapeOp::Solver* solver = new ShapeOp::Solver();
   Eigen::MatrixXd points;
@@ -223,9 +243,15 @@ int main(int argc, char **argv) {
   Eigen::RowVector3d color_cyon = Eigen::RowVector3d(0.2, 0.8, 0.8);
   Eigen::RowVector3d color_yellow = Eigen::RowVector3d(0.8, 0.8, 0.2);
   double platform_length = 200;
-  double platform_width = 200;
+  double platform_width = platform_length;
   double scale_ratio;
 
+  // mapping
+  unsigned char *image_in;
+  unsigned char *img_out;
+  int w_in, h_in, n_c_in; // width, height, n_channel of image_in
+  int w_out = 100;
+  int n_c_out = 3;
 
   auto get_color = [&](float x) {
     double r, g, b;
@@ -274,6 +300,22 @@ int main(int argc, char **argv) {
     return c;
   };
 
+
+  auto get_pixel = [&](double u, double v)->Eigen::RowVector3d {
+    // (image_in,w_in, h_in, n_c_in, x, y) -> Eigen::RowVector3d(r,g,b)
+    u = 1.0 - u;
+    v = 1.0 - v;
+    int x = u * (w_in - 1);
+    int y = v * (h_in - 1);
+    unsigned char* px = image_in + w_in * n_c_in * y + n_c_in * x;
+    double r = double(int(px[0])) / 255.;
+    double g = double(int(px[1])) / 255.;
+    double b = double(int(px[2])) / 255.;
+    Eigen::RowVector3d color = Eigen::RowVector3d(r, g, b);
+
+    return color;
+  };
+
   auto redraw = [&]() {
     cout<<"start redraw..."<<endl;
 
@@ -308,8 +350,12 @@ int main(int argc, char **argv) {
       }
 
       if (label_type == 3) {
+        for (auto f : faces) {
+          viewer.data().add_label(f->centroid(), to_string(f->num_interp));
+        }
+
         for (auto n : printing_path) {
-            viewer.data().add_label(n->pos, to_string(n->is_end));
+//            viewer.data().add_label(n->pos, to_string(n->is_end));
         }
       }
 
@@ -416,7 +462,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (display_mode == 2) { // surface
+    if (display_mode == 2) { // connection
 
       for (auto n : unvisited_vector) {
         if (n->right) {
@@ -452,32 +498,6 @@ int main(int argc, char **argv) {
           viewer.data().add_edges( (n->left_saddle->pos - n->pos) / 3 + n->pos, n->pos, color_blue ) ;
         }
       }
-
-/*  surface
-      {
-        V.resize(nodes.size(), 3);
-        F.resize(faces.size(), 3);
-
-        for (auto n : nodes) {
-          V.row(n->idx) << n->pos;
-        }
-
-        for (auto f : faces) {
-          int i0 = f->halfedge->node->idx;
-          int i1 = f->halfedge->next->node->idx;
-          int i2 = f->halfedge->next->next->node->idx;
-
-          F.row(f->idx) << i0, i1, i2;
-        }
-
-        viewer.data().set_mesh(V, F);
-        Eigen::MatrixXd FC, FN;
-        FC = Eigen::MatrixXd::Ones(faces.size(), 3);
-        FC = FC * 0.8;
-        viewer.data().set_colors(FC);
-        igl::per_face_normals(V, F, FN);  // might be redundent
-      } */
-
     }
 
     if (display_mode == 3) {  // segments
@@ -560,6 +580,47 @@ int main(int argc, char **argv) {
       }
 
       viewer.data().add_edges(p1s, p2s, colors);
+    }
+
+    if (display_mode == 5) {  // mesh
+      V_out.resize(nodes.size(), 3);
+      F_out.resize(faces.size(), 3);
+
+      for (auto n : nodes) {
+        V_out.row(n->idx) << n->pos;
+      }
+
+      for (auto f : faces) {
+        int i0 = f->halfedge->node->idx;
+        int i1 = f->halfedge->next->node->idx;
+        int i2 = f->halfedge->next->next->node->idx;
+        F_out.row(f->idx) << i0, i1, i2;
+      }
+
+      viewer.data().set_mesh(V_out, F_out);
+      FC_out.resize(F_out.rows(), 3);
+
+      for (auto i = 0; i < faces.size(); i++) {
+        Face* f = faces[i];
+        Eigen::RowVector3d color;
+        color << 0,0,0;
+        for (int i_n = 0; i_n < 3; i_n++) {
+          Node* n = f->node(i_n);
+          color += n->color;
+        }
+        color /= 3;
+        FC_out.row(i) = color;
+      }
+
+//      FC = FC * 0.8;
+      viewer.data().set_colors(FC_out);
+      igl::per_face_normals(V_out, F_out, N_out);  // might be redundent
+    }
+
+    if (display_mode == 6) {  // input mesh
+      viewer.data().set_mesh(V_in, F_in);
+      viewer.data().set_colors(FC_in);
+      igl::per_face_normals(V_in, F_in, N_in);  // might be redundent
     }
   };
 
@@ -885,7 +946,7 @@ int main(int argc, char **argv) {
 
   auto visit = [&](Node* n_iter) {
     unvisited.erase(n_iter);
-    printing_path.push_back(n_iter);
+    n_iter->i_path = printing_path.size(); printing_path.push_back(n_iter);
   };
 
   auto get_links = [&](int num_interp_left, int num_interp_right)
@@ -1108,8 +1169,6 @@ int main(int argc, char **argv) {
            }
       );
     }
-
-
   };
 
   //////////////// menu funcs /////////////////
@@ -1241,7 +1300,6 @@ int main(int argc, char **argv) {
           cout<<"extract the boundary: "<<node_iter->idx<<endl;
 
           while (true) {  // extract the whole boundary
-            cout<<node_iter->idx<<endl;
             if (node_iter->up) {
               is_boundary = false;
               boundary_top.clear();
@@ -1517,6 +1575,30 @@ int main(int argc, char **argv) {
 //    redraw();
   };
 
+  auto hit = [&](Node* n)->Eigen::RowVector3d {
+    Eigen::RowVector3d s, dir;  // intersection ray
+    s = n->pos;
+    s.z() = -1E4;
+    dir << 0, 0, 1E4;
+
+    vector<igl::Hit> hits;
+    igl::ray_mesh_intersect(s,dir, V_in, F_in, hits);
+    if (hits.size() != 1) {
+      cout<<"hit "<<hits.size()<<" idx: "<<n->idx<<endl; getchar();
+      return Eigen::RowVector3d(1,0,0);
+    }
+    else {
+      return FC_in.row(hits[0].id);
+    }
+
+  };
+
+  auto texture_map = [&]() {
+    for (auto n : nodes) {
+      n->color = hit(n);
+    }
+  };
+
   auto step = [&]() {
     display_stress = true;
 
@@ -1750,6 +1832,7 @@ int main(int argc, char **argv) {
     string in_file_name;
     if (argv[1]) in_file_name = argv[1];
     else cerr << "arg[1] is required." << endl;
+
     ifstream ifile(in_file_name);
 
     string line;
@@ -1764,18 +1847,66 @@ int main(int argc, char **argv) {
     while (getline(ifile, line, '\n')) {
       vector<string> items;
       boost::split(items, line, boost::is_any_of(" "), boost::token_compress_on);
-      int idx = stoi(items[0]);
-      Node *n = nodes[idx];
-      n->idx = stoi(items[0]); // -1: not defined; -1: inserted
-      n->pos = Eigen::RowVector3d(stof(items[1]), stof(items[2]), stof(items[3]));
-      n->pos_origin = Eigen::RowVector3d(stof(items[1]), stof(items[2]), stof(items[3]));
-      if (items[4] != "-1") n->idx_iso = stoi(items[4]);
-      if (items[5] != "-1") n->idx_grad = stoi(items[5]);
-      if (items[6] != "-1") n->right = nodes[stoi(items[6])];
-      if (items[7] != "-1") n->left = nodes[stoi(items[7])];
-      if (items[8] != "-1") n->up = nodes[stoi(items[8])];
-      if (items[9] != "-1") n->down = nodes[stoi(items[9])];
+      if (items[0] == "#") {
+        nodes.resize(nodes.size()-1);
+        if (items[1] == "center") {
+          center.resize(1, 3);
+          center << stod(items[2]), stod(items[3]), stod(items[4]);
+        }
+      }
+      else {
+        int idx = stoi(items[0]);
+        Node *n = nodes[idx];
+        n->idx = stoi(items[0]); // -1: not defined; -1: inserted
+        n->pos = Eigen::RowVector3d(stof(items[1]), stof(items[2]), stof(items[3]));
+        n->pos_origin = Eigen::RowVector3d(stof(items[1]), stof(items[2]), stof(items[3]));
+        if (items[4] != "-1") n->idx_iso = stoi(items[4]);
+        if (items[5] != "-1") n->idx_grad = stoi(items[5]);
+        if (items[6] != "-1") n->right = nodes[stoi(items[6])];
+        if (items[7] != "-1") n->left = nodes[stoi(items[7])];
+        if (items[8] != "-1") n->up = nodes[stoi(items[8])];
+        if (items[9] != "-1") n->down = nodes[stoi(items[9])];
+      }
     }
+  }
+
+  // load image
+  if (argv[3]) {
+    image_in = stbi_load(argv[3], &w_in, &h_in, &n_c_in, 0);
+  }
+
+  // load mesh
+  if (argv[2]) {
+    cout<<"reading OBJ...."<<endl;
+    igl::readOBJ(argv[2],V_in, TC_in, N_in, F_in, FTC_in, FN_in);
+
+    FC_in.resize(F_in.rows(), 3);
+    for (int i = 0; i < F_in.rows(); i++) {
+      int iv0 = FTC_in.row(i)[0];
+      int iv1 = FTC_in.row(i)[1];
+      int iv2 = FTC_in.row(i)[2];
+
+      Eigen::RowVector2d pos_tc0 = TC_in.row(iv0);
+      Eigen::RowVector2d pos_tc1 = TC_in.row(iv1);
+      Eigen::RowVector2d pos_tc2 = TC_in.row(iv2);
+
+      Eigen::RowVector3d c0 = get_pixel(pos_tc0[0], pos_tc0[1]);
+      Eigen::RowVector3d c1 = get_pixel(pos_tc1[0], pos_tc1[1]);
+      Eigen::RowVector3d c2 = get_pixel(pos_tc2[0], pos_tc2[1]);
+
+      Eigen::RowVector3d cf = (c0 + c1 + c2) / 3;
+      FC_in.row(i) = cf;
+    }
+    cout<<"V.size: "<<V_in.rows()<<" "<<V_in.cols()<<endl;
+    cout<<"TC.size: "<<TC_in.rows()<<" "<<TC_in.cols()<<endl;
+    cout<<"N.size: "<<N_in.rows()<<" "<<N_in.cols()<<endl;
+    cout<<"F.size: "<<F_in.rows()<<" "<<F_in.cols()<<endl<<endl;
+    cout<<"FTC.size: "<<FTC_in.rows()<<" "<<FTC_in.cols()<<endl<<endl;
+    cout<<"FN.size: "<<FN_in.rows()<<" "<<FN_in.cols()<<endl<<endl;
+    cout<<"done."<<endl;
+
+    // recenter
+    V_in.rowwise() -= center;
   }
 
   // compute avg_len
@@ -1824,6 +1955,7 @@ int main(int argc, char **argv) {
       ImGui::InputFloat("gapSize", &gap_size);
       ImGui::InputInt("maxGap", &filter_threshold);
       ImGui::InputInt("saddle_displacement", &saddle_displacement);
+      ImGui::InputInt("resolution", &w_out);
     }
 
     if (ImGui::CollapsingHeader("display", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1835,9 +1967,11 @@ int main(int argc, char **argv) {
 
       if (ImGui::RadioButton("graph", &display_mode, 0) or
           ImGui::RadioButton("halfedge", &display_mode, 1) or
-          ImGui::RadioButton("surface", &display_mode, 2) or
           ImGui::RadioButton("segments", &display_mode, 3) or
-          ImGui::RadioButton("tracing", &display_mode, 4)
+          ImGui::RadioButton("tracing", &display_mode, 4) or
+          ImGui::RadioButton("connection", &display_mode, 2) or
+          ImGui::RadioButton("mesh", &display_mode, 5) or
+          ImGui::RadioButton("input_mesh", &display_mode, 6)
         ) {
         redraw();
       }
@@ -1959,6 +2093,11 @@ int main(int argc, char **argv) {
         halfedgize();
       }
 
+      if (ImGui::Button("map")) {
+        texture_map();
+      }
+
+
       ImGui::Text("Convergence: ", to_string(get_convergence()).c_str());
 
       if (ImGui::Button("step")) {
@@ -1973,6 +2112,7 @@ int main(int argc, char **argv) {
       if (ImGui::Button("begin")) {
         is_flattening = true;
       }
+
       if (ImGui::Button("pause")) {
         is_flattening = false;
       }
@@ -2031,7 +2171,7 @@ int main(int argc, char **argv) {
         y_span = y_max - y_min;
         z_span = z_max - z_min;
         cout<<"span: "<<x_span<<" "<<y_span<<endl;
-        scale_ratio = min( platform_length / x_span, platform_width / y_span );
+        scale_ratio = min( (platform_length - 1) / x_span, (platform_width - 1) / y_span );
         Eigen::RowVector3d translation = Eigen::RowVector3d ((x_max + x_min) / 2, (y_max + y_min) / 2, 0);
         for (auto n : nodes) {
           n->pos -= translation;
@@ -2247,15 +2387,15 @@ int main(int argc, char **argv) {
 
                 Eigen::RowVector3d vec_mid = f->pos_stretch_mid - f->n_bridge->pos;
                  double iso_distance = abs(vec_mid.dot(vec_perpendicular));
-                f->num_interp = int(iso_distance / (2 * gap_size) ) * 2;  // make sure even
+                f->num_interp = int(iso_distance / (2 * gap_size) );  // double gap_size first, double num after smoothing
 
 //                if (f->n_bridge->is_cone) f->num_interp = 0;  // TODO
               }
             }
 
             // smooth  num_interp, difference between neighbor faces within 2
-            /*
             {
+              // smoothing num_interp
               vector<int> num_interps;
               vector<int> num_interps_new;
               for (auto f : iso_faces_loop) {
@@ -2270,7 +2410,7 @@ int main(int argc, char **argv) {
                 for (int i = 0; i < num_interps.size(); i++) {
                   int i_next = (num_interps.size() + i + 1) % num_interps.size();
                   int diff = abs(num_interps[i_next] - num_interps[i]);
-                  if (diff != 0 and diff != 2) {
+                  if (diff > min(num_interps[i_next], num_interps[i])) {  // TODO: param
                     smooth = false;
                     if (diff == 1) {
                       num_interps_new[i] = num_interps[i];
@@ -2289,17 +2429,19 @@ int main(int argc, char **argv) {
                   }
                 }
                 if (smooth) break;
-                if (times++ > 1000) break;
+                if (times++ > 5) {
+                  break;
+                }
                 num_interps = num_interps_new;
               }
 
               int i = 0;
               for (auto f : iso_faces_loop) {
-                f->num_interp = num_interps_new[i];
+                f->num_interp = num_interps_new[i] * 2;
                 i++;
               }
             }
-            */
+
 
           }
         }
@@ -2748,7 +2890,7 @@ int main(int argc, char **argv) {
             }
             if (iso_min > 1e7) break;
 
-            unvisited.erase(n_iter); printing_path.push_back(n_iter);
+            unvisited.erase(n_iter); n_iter->i_path = printing_path.size(); printing_path.push_back(n_iter);
             n_iter->shrinkage = -1;
           }
 
@@ -2886,7 +3028,7 @@ int main(int argc, char **argv) {
                       getchar(); break;
                     }
                     n_iter = n_iter->down;
-                    unvisited.erase(n_iter); printing_path.push_back(n_iter);
+                    unvisited.erase(n_iter); n_iter->i_path = printing_path.size(); printing_path.push_back(n_iter);
                     n_iter->shrinkage = -1;
                   }
                 }
@@ -2895,14 +3037,14 @@ int main(int argc, char **argv) {
                   for (auto nu : n_iter->ups) {
                     if (nu->is_end and unvisited.count(nu)) {
                       n_iter = nu->up;
-                      unvisited.erase(n_iter); printing_path.push_back(n_iter);
+                      unvisited.erase(n_iter); n_iter->i_path = printing_path.size(); printing_path.push_back(n_iter);
                       n_iter->shrinkage = -1;
                     }
                   }
                 } else
                 if (n_iter->up and n_iter->up->is_end and unvisited.count(n_iter->up)) {  // enter double back
                   n_iter = n_iter->up->up;
-                  unvisited.erase(n_iter); printing_path.push_back(n_iter);
+                  unvisited.erase(n_iter); n_iter->i_path = printing_path.size(); printing_path.push_back(n_iter);
                   n_iter->shrinkage = -1;
                 }
               }
@@ -3091,7 +3233,7 @@ int main(int argc, char **argv) {
                               shrinkage_down * to_up / (to_up + to_down);
                 }
 
-                unvisited.erase(n_iter); printing_path.push_back(n_iter);
+                unvisited.erase(n_iter); n_iter->i_path = printing_path.size(); printing_path.push_back(n_iter);
                 n_iter->shrinkage = shrinkage;
               }
 
@@ -3129,7 +3271,7 @@ int main(int argc, char **argv) {
                 }
               }
               unvisited.erase(n_iter);
-              printing_path.push_back(n_iter);
+              n_iter->i_path = printing_path.size(); printing_path.push_back(n_iter);
               n_iter->shrinkage = -1;
 
             }
@@ -3306,16 +3448,11 @@ int main(int argc, char **argv) {
               }
               printing_path.emplace_back(n_interp);
               paths.emplace_back(n_interp);
-              viewer.data().add_label(n_interp->pos, to_string(i_interp));
             }
           }
 
-
-          for (int i = 0; i < paths.size() - 1; i++) {
-            viewer.data().add_edges(paths[i]->pos, paths[i+1]->pos, color_red);
-          }
-
-
+          display_mode = 4;
+          redraw();
 
         }
       }
@@ -3327,10 +3464,156 @@ int main(int argc, char **argv) {
         if (ofile.is_open()) {
           for (auto n : printing_path) {
             Eigen::RowVector3d p = n->pos;
-            ofile<<p[0]<<" "<<p[1]<<" "<<n->is_move<<" "<<n->shrinkage<<endl;
+            ofile << p[0] << " " << p[1] << " " << n->is_move << " " << n->shrinkage <<endl;
           }
+
+          for (auto f : faces) {
+            if (f->is_external) continue;
+            ofile << "f "<< f->node(0)->pos.x() <<" "<< f->node(0)->pos.y() <<" "
+                          << f->node(1)->pos.x() <<" "<< f->node(1)->pos.y() <<" "
+                          << f->node(2)->pos.x() <<" "<< f->node(2)->pos.y() <<" "
+                          << f->node(0)->color[0] <<" "<< f->node(0)->color[1] <<" "<< f->node(0)->color[2]<<" "
+                          << f->node(1)->color[0] <<" "<< f->node(1)->color[1] <<" "<< f->node(1)->color[2]<<" "
+                          << f->node(2)->color[0] <<" "<< f->node(2)->color[1] <<" "<< f->node(2)->color[2]<<endl;
+          }
+
         }
       }
+
+//      if (ImGui::Button("save_img")) {
+//        string ofile_name = igl::file_dialog_save();
+//        const char* name = ofile_name.c_str();
+//        stbi_write_bmp(name, w_out, w_out, n_c_out, img_out);
+//      }
+
+//      if (ImGui::Button("test")) {
+//        // init image_out
+//        int num_px_x = w_out;
+//        int num_px_y = w_out;
+//        double w_screen = platform_width;
+//        double h_screen = platform_length;
+//        double size_px = w_screen / num_px_x;
+//
+//        int size_img = num_px_x * num_px_y * n_c_out;
+//        img_out = (unsigned char*) malloc(size_img);
+//        for (int i = 0; i < num_px_x * num_px_y; i++) {
+//          if (i + 2 >= num_px_x * num_px_y * n_c_out) {
+//            cout<<"oversize"<<endl;
+//            getchar();
+//          }
+//          img_out[i*n_c_out] = 255;
+//          img_out[i*n_c_out+1] = 255;
+//          img_out[i*n_c_out+2] = 255;
+//        }
+//
+//        auto get_i_px = [&](double x, double y)->Eigen::RowVector2i {
+//          int i_px_x = x / size_px;
+//          int i_px_y = y / size_px;
+//          if (i_px_x < 0 or i_px_x >= num_px_x) {
+//            cout<<"overflow"<<endl;getchar();
+//            return Eigen::RowVector2i(0, 0);
+//          }
+//          if (i_px_y < 0 or i_px_y >= num_px_x) {
+//            cout<<"overflow"<<endl;getchar();
+//            return Eigen::RowVector2i(0, 0);
+//          }
+//          return Eigen::RowVector2i(i_px_x, i_px_y);
+//        };
+//
+//        auto get_coord = [&](int i_px_x, int i_px_y)->Eigen::RowVector2d {
+//          double x = i_px_x * size_px + size_px / 2;
+//          double y = i_px_y * size_px + size_px / 2;
+//          return Eigen::RowVector2d(x, y);
+//        };
+//
+//        auto paint_px = [&](int i_px_x, int i_px_y, Eigen::RowVector3d c) {
+//          int i = i_px_y * num_px_x * 3 + i_px_x * 3;
+//          img_out[i] = char(int(c[0] * 255));
+//          img_out[i+1] = char(int(c[1] * 255));
+//          img_out[i+2] = char(int(c[2] * 255));
+//        };
+//
+//        auto sign = [&](Eigen::RowVector2d p0, Eigen::RowVector2d p1, Eigen::RowVector2d p2) -> double {
+//          return (p0.x() - p2.x()) * (p1.y() - p2.y()) - (p1.x() - p2.x()) * (p0.y() - p2.y());
+//        };
+//        auto in_triangle = [&](Eigen::RowVector2d p, Eigen::RowVector2d p0,
+//                              Eigen::RowVector2d p1, Eigen::RowVector2d p2) -> bool {
+//          float d1, d2, d3;
+//          bool has_neg, has_pos;
+//
+//          d1 = sign(p, p0, p1);
+//          d2 = sign(p, p1, p2);
+//          d3 = sign(p, p2, p0);
+//
+//          has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+//          has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+//
+//          return !(has_neg && has_pos);
+//        };
+//
+//        for (auto f : faces) {
+//          if (f->is_external) continue;
+//          cout<<"f_idx: "<<f->idx<<endl;
+////          cout<<f->halfedge->node->idx<<endl;
+////          cout<<f->halfedge->next->node->idx<<endl;
+////          cout<<f->halfedge->next->next->node->idx<<endl;
+//
+//          // get bbox
+//          int i_px_x0 = 1E8;
+//          int i_px_y0 = 1E9;
+//          int i_px_x1 = -1;
+//          int i_px_y1 = -1;
+//          for (int i_n = 0; i_n < 3; i_n++) {
+//            Node* n = f->node(i_n);
+//            Eigen::RowVector2i i_px = get_i_px(n->pos.x(), n->pos.y());
+//            if (i_px.x() < i_px_x0) i_px_x0 = i_px.x();
+//            if (i_px.y() < i_px_y0) i_px_y0 = i_px.y();
+//            if (i_px.x() > i_px_x1) i_px_x1 = i_px.x();
+//            if (i_px.y() > i_px_y1) i_px_y1 = i_px.y();
+//          }
+//
+//          int i_px_x = i_px_x0;
+//          int i_px_y = i_px_y0;
+//          while (true) {
+//            cout<<"get_coord("<<i_px_x<<", "<<i_px_y<<")"<<endl;
+//            Eigen::RowVector2d p = get_coord(i_px_x, i_px_y) + Eigen::RowVector2d(size_px/2, size_px/2);
+//            Eigen::RowVector2d p0;
+//            Eigen::RowVector2d p1;
+//            Eigen::RowVector2d p2;
+//            cout<<"a"<<endl;
+//            p0 << f->node(0)->pos[0], f->node(0)->pos[1];
+//            p1 << f->node(1)->pos[0], f->node(1)->pos[1];
+//            p2 << f->node(2)->pos[0], f->node(2)->pos[1];
+//            cout<<"b"<<endl;
+//
+//            bool in_tri = in_triangle(p, p0, p1, p2);
+//            cout<<"check"<<in_tri<<endl;
+//            if (in_tri) {
+//              cout<<"paint"<<endl;
+//              // TODO: bc
+//              paint_px(i_px_x, i_px_y, f->node(0)->color);
+//              cout<<"done paint"<<endl;
+//            }
+//            cout<<"hehe"<<endl;
+//            i_px_x++;
+//            if (i_px_x > i_px_x0) {
+//              i_px_x = i_px_x0;
+//              i_px_y++;
+//            }
+//            cout<<"haha"<<endl;
+//            if (i_px_y > i_px_y0) break;
+//          }
+//          cout<<"haha"<<endl;
+//        }
+//        cout<<"eee"<<endl;
+//
+//
+//        string ofile_name = igl::file_dialog_save();
+//        const char* name = ofile_name.c_str();
+//        stbi_write_bmp(name, w_out, w_out, n_c_out, img_out);
+//        free(img_out);
+//
+//      }
     }
   };
 
