@@ -75,11 +75,10 @@ struct Node {
 
   // for printing
   bool is_move = false; // extrude
-  float shrinkage = 0.15; // minimum shrinkage
+  float shrinkage = -1; // defaut shrinkage
 
   // for mapping
   Eigen::RowVector3d color = Eigen::RowVector3d(1.0, 0.0, 0.0);
-
 };
 
 
@@ -170,6 +169,28 @@ struct Face {
   int num_interp = 0;
   Eigen::RowVector3d vec_bridge = Eigen::RowVector3d(0,0,0);
   Eigen::RowVector3d vec_stretch = Eigen::RowVector3d(0,0,0);
+
+  double area() {
+    Eigen::RowVector3d v1 = this->halfedge->prev->node->pos - this->halfedge->node->pos;
+    Eigen::RowVector3d v2 = this->halfedge->next->node->pos - this->halfedge->node->pos;
+    double area = v1.cross(v2).norm() / 2;
+    return area;
+  }
+
+  double area_origin() {
+    Eigen::RowVector3d v1_origin = this->halfedge->prev->node->pos_origin - this->halfedge->node->pos_origin;
+    Eigen::RowVector3d v2_origin = this->halfedge->next->node->pos_origin - this->halfedge->node->pos_origin;
+    double area_origin = v1_origin.cross(v2_origin).norm() / 2;
+    return area_origin;
+  }
+
+  double opacity() {
+    double opacity = this->area_origin() / this->area();
+    if (opacity > 1) return 1.0;
+    if (opacity < 0) return 0.0;
+    return opacity;
+  }
+
 };
 
 int main(int argc, char **argv) {
@@ -190,6 +211,7 @@ int main(int argc, char **argv) {
   vector<vector<Node *>> boundaries_saddle;
   vector<Node*> boundary_bottom;
   vector<Node*> saddles;
+  vector<Node*> cones;
 
   vector<vector<vector<Node *>>> isos_node;  // iso -> loop -> Node
   vector<vector<vector<Face *>>> iso_faces;  // iso -> loop -> Face
@@ -216,6 +238,10 @@ int main(int argc, char **argv) {
   bool is_flattening = false;
 
   float iso_spacing = 10.0;
+  float shrinkage_cone = 0.28;
+  float shrinkage_cone_down = 0.1;
+  float radius_cone = 5;
+  float radius_trim = 0.45;
   int num_iter = 1;
   int filter_threshold = 3;
   int saddle_displacement = 3;
@@ -924,6 +950,7 @@ int main(int argc, char **argv) {
       n_new->pos_origin = n_new->pos;
       n_new->idx_iso = n_left->idx_iso;
       n_new->idx_grad = -1;
+      n_new->on_saddle_side = true;
 
       if (i == 0) {
         n_new->left = n_left;
@@ -1328,6 +1355,7 @@ int main(int argc, char **argv) {
             n_center->idx_grad = -1;
             n_center->is_cone = true;
             nodes.push_back(n_center);
+            cones.push_back(n_center);
 
             int i = 0;
             for (auto nb : boundary_top) {
@@ -1956,6 +1984,10 @@ int main(int argc, char **argv) {
       ImGui::InputInt("maxGap", &filter_threshold);
       ImGui::InputInt("saddle_displacement", &saddle_displacement);
       ImGui::InputInt("resolution", &w_out);
+      ImGui::InputFloat("shrinkage_cone", &shrinkage_cone);
+      ImGui::InputFloat("shrinkage_cone_down", &shrinkage_cone_down);
+      ImGui::InputFloat("radius_cone", &radius_cone);
+      ImGui::InputFloat("radius_trim", &radius_trim);
     }
 
     if (ImGui::CollapsingHeader("display", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -2878,10 +2910,11 @@ int main(int argc, char **argv) {
             iso_min = 1e8;
             for (auto n : nodes) {
               if (not unvisited.count(n)) continue;
-              if (n->is_cone or n->is_saddle or n->on_saddle_boundary) {
+              if (n->is_cone or n->is_saddle) {
                 unvisited.erase(n);
                 continue;
               }
+              if (n->on_saddle_side) continue;
 
               if (n->idx_iso < iso_min) {
                 iso_min = n->idx_iso;
@@ -2918,7 +2951,7 @@ int main(int argc, char **argv) {
                     move_horizontally = true;
                   }
                   else {
-                    if (n_iter->up and n_iter->up->is_end and unvisited.count(n_iter->up)) { // move up to next double back segment
+                    if (n_iter->up and n_iter->up->is_end and unvisited.count(n_iter->up)) {    // move up to next double back segment
                       n_iter = n_iter->up;
                       visit(n_iter);
                     }
@@ -3069,7 +3102,7 @@ int main(int argc, char **argv) {
                   n_down_b = n_iter;
 
                   while (n_up_a->idx == -1) {
-                    if (n_up_a->is_cone or n_up_a->is_saddle) break;
+//                    if (n_up_a->is_cone or n_up_a->is_saddle) break;
                     if (not n_up_a->up) {
                       cout << "not n_up_a->up " << n_up_a->i_unvisited_vector << endl; getchar();
                       break;
@@ -3086,7 +3119,7 @@ int main(int argc, char **argv) {
                   }
 
                   while (n_up_b->idx == -1) {
-                    if (n_up_b->is_cone or n_up_b->is_saddle) break;
+//                    if (n_up_b->is_cone or n_up_b->is_saddle) break;
                     if (not n_up_b->up) {
                       cout << "not n_up_b->up " << n_up_b->i_unvisited_vector << endl; getchar();
                       break;
@@ -3288,6 +3321,7 @@ int main(int argc, char **argv) {
 
         for (auto n_saddle : saddles) {
           cout<<"detect saddle "<<n_saddle->idx<<endl;
+          bool is_first = true;
 
           // collect halfedges_saddle
           vector<Halfedge*> halfedges_saddle;
@@ -3419,42 +3453,167 @@ int main(int argc, char **argv) {
           }
 
           // merge
-          for (auto h : halfedges_saddle) {
-            Face* f = h->twin->face;
-            Edge* e = f->e_bridge_left;
-            Face* f_left = (e->halfedge->face == f) ?
-                           e->halfedge->twin->face :
-                           e->halfedge->face;
-            f->left = f_left;
-            f_left->right = f;
-
-            merge_edge(e, f, f_left, h);
-          }
+//          for (auto h : halfedges_saddle) {
+//            Face* f = h->twin->face;
+//            Edge* e = f->e_bridge_left;
+//            Face* f_left = (e->halfedge->face == f) ?
+//                           e->halfedge->twin->face :
+//                           e->halfedge->face;
+//            f->left = f_left;
+//            f_left->right = f;
+//
+//            merge_edge(e, f, f_left, h);
+//          }
 
           // collect path
-          vector<Node*> paths;
-          for (int i_interp = -1; i_interp < num_interp_max; i_interp++) {
-            for (auto h : halfedges_saddle) {
-              Edge* e = h->edge;
-              Node *n_interp;
-              if (i_interp == -1) {
-                n_interp = h->node;
+          bool from_bottom = true;
+          for (auto h : halfedges_saddle) {
+            Edge* e_l = h->prev->prev->edge;
+            Edge* e_r = h->edge;
+            vector<Node*> nodes_left = e_l->nodes_interp_as_left;
+            vector<Node*> nodes_right = e_r->nodes_interp_as_right;
+
+            vector<Node*> path;
+            int i = -1;
+            bool from_left =true;
+            while (true) {
+
+              if (i == -1) {
+                if (h->node->on_saddle_side) {
+                  path.push_back(h->node);
+                  path.push_back(h->prev->node);
+                }
+                i = 0;
+                continue;
               }
-              else if (i_interp < e->nodes_interp.size() ) {
-                n_interp = e->nodes_interp[i_interp];
+
+              if (i >= nodes_left.size() or i >= nodes_right.size()) break;
+
+              if (from_left) {
+                path.push_back(nodes_left[i]);
+                path.push_back(nodes_right[i]);
               }
               else {
-                n_interp = n_saddle;
+                path.push_back(nodes_right[i]);
+                path.push_back(nodes_left[i]);
               }
-              printing_path.emplace_back(n_interp);
-              paths.emplace_back(n_interp);
+
+
+              i++;
+              from_left = not from_left;
             }
+
+            if (not from_bottom) {
+              reverse(path.begin(), path.end());
+            }
+
+            for (Node* n : path) {
+              n->shrinkage = h->node->shrinkage;
+              if (n->shrinkage == -1 and not h->node->downs.empty()) {
+                n->shrinkage = h->node->downs[0]->shrinkage;
+              }
+              if (n->shrinkage == -1 and not h->node->ups.empty()) {
+                n->shrinkage = h->node->ups[0]->shrinkage;
+              }
+              if (n->shrinkage == -1) {
+                n->shrinkage = h->twin->next->next->node->shrinkage;
+              }
+              if (is_first) {
+                n->shrinkage = -1;
+                n->is_move = true;
+                is_first = false;
+              }
+
+              printing_path.push_back(n);
+            }
+
+            from_bottom = not from_bottom;
           }
+
+//
+//          vector<Node*> paths;
+//          for (int i_interp = -1; i_interp < num_interp_max; i_interp++) {
+//            for (auto h : halfedges_saddle) {
+//              Edge* e = h->edge;
+//              Node *n_interp;
+//              if (i_interp == -1) {
+//                n_interp = h->node;
+//              }
+//              else if (i_interp < e->nodes_interp.size() ) {
+//                n_interp = e->nodes_interp[i_interp];
+//              }
+//              else {
+//                n_interp = n_saddle;
+//              }
+//
+//
+//              if (is_first) {
+//                n_interp->shrinkage = -1;
+//                is_first = false;
+//              }
+//              else {
+//                n_interp->shrinkage = h->node->shrinkage;
+//                if (n_interp->shrinkage == -1 and not h->node->downs.empty()) {
+//                  n_interp->shrinkage = h->node->downs[0]->shrinkage;
+//                }
+//                if (n_interp->shrinkage == -1) {
+//                  n_interp->shrinkage = h->twin->next->next->node->shrinkage;
+//                }
+//
+//               }
+//              printing_path.emplace_back(n_interp);
+//              paths.emplace_back(n_interp);
+//
+//            }
+//          }
 
           display_mode = 4;
           redraw();
 
         }
+      }
+
+      if (ImGui::Button("adjust_cone")) {
+        for (auto n : printing_path) {
+          for (auto nc : cones) {
+            double d = (n->pos - nc->pos).norm();
+            if (d < radius_cone) {
+              if (n->shrinkage == -1) continue;
+              double t = 1 - d / radius_cone;
+              double s = t * shrinkage_cone + (1-t) * shrinkage_cone_down;
+              n->shrinkage = s;
+            }
+          }
+        }
+        redraw();
+
+      }
+
+      if (ImGui::Button("trim_center")) {
+        vector<Node*> printing_path_new;
+        for (auto n : printing_path) {
+          bool keep = true;
+          for (auto nc :cones) {
+            double d = (n->pos - nc->pos).norm();
+            if (d < radius_trim) {
+              keep = false;
+            }
+          }
+          for (auto nc :saddles) {
+            double d = (n->pos - nc->pos).norm();
+            if (d < radius_trim) {
+              keep = false;
+            }
+          }
+
+          if (keep) {
+            printing_path_new.push_back(n);
+          }
+        }
+        printing_path.clear();
+        printing_path = printing_path_new;
+        redraw();
+
       }
 
       if (ImGui::Button("save")) {
@@ -3464,6 +3623,7 @@ int main(int argc, char **argv) {
         if (ofile.is_open()) {
           for (auto n : printing_path) {
             Eigen::RowVector3d p = n->pos;
+            if (n->is_move) n->shrinkage = -1;
             ofile << p[0] << " " << p[1] << " " << n->is_move << " " << n->shrinkage <<endl;
           }
 
@@ -3474,9 +3634,9 @@ int main(int argc, char **argv) {
                           << f->node(2)->pos.x() <<" "<< f->node(2)->pos.y() <<" "
                           << f->node(0)->color[0] <<" "<< f->node(0)->color[1] <<" "<< f->node(0)->color[2]<<" "
                           << f->node(1)->color[0] <<" "<< f->node(1)->color[1] <<" "<< f->node(1)->color[2]<<" "
-                          << f->node(2)->color[0] <<" "<< f->node(2)->color[1] <<" "<< f->node(2)->color[2]<<endl;
+                          << f->node(2)->color[0] <<" "<< f->node(2)->color[1] <<" "<< f->node(2)->color[2]<<" "
+                          << f->opacity() * scale_ratio * scale_ratio << endl;
           }
-
         }
       }
 
