@@ -24,10 +24,12 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
 
+// Eigen
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
 #include <Eigen/Dense>
 
+// ShapeOp
 #include "Solver.h"
 #include "Constraint.h"
 #include "Force.h"
@@ -1951,8 +1953,8 @@ int main(int argc, char **argv) {
   }
 
   { // visualizer
-    viewer.core.background_color = Eigen::Vector4f(0., 0., 0., 1.);
-    viewer.core.camera_base_zoom = 0.01;
+    viewer.core().background_color = Eigen::Vector4f(0., 0., 0., 1.);
+    viewer.core().camera_base_zoom = 0.01;
     viewer.plugins.push_back(&menu);
 
     redraw();
@@ -2022,10 +2024,10 @@ int main(int argc, char **argv) {
 
       if (ImGui::Checkbox("nightMode", &background_black) ) {
         if (background_black) {
-          viewer.core.background_color = Eigen::Vector4f(0.0, 0.0, 0.0, 1.0);
+          viewer.core().background_color = Eigen::Vector4f(0.0, 0.0, 0.0, 1.0);
         }
         else {
-          viewer.core.background_color = Eigen::Vector4f(1.0, 1.0, 1.0, 1.0);
+          viewer.core().background_color = Eigen::Vector4f(1.0, 1.0, 1.0, 1.0);
         }
       }
 
@@ -3953,9 +3955,9 @@ int main(int argc, char **argv) {
       // intersect ray with xy flatten
       Eigen::RowVector3d v_xy;  // intersection between ray and xy plain
       double x = viewer.current_mouse_x;
-      double y = viewer.core.viewport(3) - viewer.current_mouse_y;
+      double y = viewer.core().viewport(3) - viewer.current_mouse_y;
       Eigen::Vector3d s, dir;
-      igl::unproject_ray(Eigen::Vector2f(x,y), viewer.core.view, viewer.core.proj, viewer.core.viewport, s, dir);
+      igl::unproject_ray(Eigen::Vector2f(x,y), viewer.core().view, viewer.core().proj, viewer.core().viewport, s, dir);
       float t = - s[2] / dir[2];
       v_xy = s + t * dir;
 

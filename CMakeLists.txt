@@ -7,13 +7,13 @@ set(SHAPEOP_VERSION_MINOR 1)
 set(SHAPEOP_VERSION_PATCH 0)
 set(SHAPEOP_VERSION_STRING ${SHAPEOP_VERSION_MAJOR}.${SHAPEOP_VERSION_MINOR}.${SHAPEOP_VERSION_PATCH})
 
-
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+
 
 # libigl
 option(LIBIGL_USE_STATIC_LIBRARY "Use libigl as static library" OFF)
@@ -38,7 +38,8 @@ option(LIBIGL_WITH_XML               "Use XML"            OFF)
 find_package(LIBIGL REQUIRED QUIET)
 
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang") #Tests for Clang and AppleClang which is defined in CMake 3.0 and higher
+#Tests for Clang and AppleClang which is defined in CMake 3.0 and higher
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   message("Clang.")
   set(CMAKE_CXX_FLAGS "-std=c++11 -stdlib=libc++ -Wall -g")
   set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
@@ -80,27 +81,17 @@ else()
   message( FATAL_ERROR "CXX compiler not recognized. CMake will quit." )
 endif()
 
-include_directories("./libShapeOp/src/")
-include_directories("./libShapeOp/api/")
 
-# fix: compiler cannot find <boost>
-include_directories("/usr/local/include/")
-# fix: compiler cannot find some OpenGL constants
-include_directories("/System/Library/Frameworks/OpenGL.framework/Headers/")
+include_directories("./include/")
+include_directories("./lib/libShapeOp/src")
 
-
-add_subdirectory(libShapeOp)
+add_subdirectory(lib/libShapeOp)
 
 # Add your project files
 file(GLOB SRCFILES *.cpp)
 add_executable(${PROJECT_NAME} ${SRCFILES})
-#target_include_directories(${PROJECT_NAME} PUBLIC ./shape-op/)
-target_include_directories(${PROJECT_NAME} PUBLIC ./libShapeOp/)
-#target_include_directories(${PROJECT_NAME} PUBLIC /usr/local/Cellar/boost/1.64.0_1/include/)
-#target_include_directories(${PROJECT_NAME} PUBLIC /usr/local/Cellar/gmp/6.1.2/include/)
-#target_include_directories(${PROJECT_NAME} PUBLIC /usr/local/Cellar/mpfr/3.1.5/include/)
-#target_include_directories(${PROJECT_NAME} PUBLIC /usr/local/Cellar/cgal/4.9.1/include/ )
-#target_include_directories(${PROJECT_NAME} PUBLIC ../External/spectra/include) #for spectra
-#link_directories(/usr/local/Cellar/cgal/4.9.1/lib/)
+
+
 target_link_libraries(${PROJECT_NAME} igl::core igl::opengl_glfw_imgui)
 target_link_libraries(${PROJECT_NAME} ShapeOp)
+

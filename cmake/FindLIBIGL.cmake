@@ -34,9 +34,10 @@ find_package_handle_standard_args(LIBIGL
     "\nlibigl not found --- You can download it using:\n\tgit clone --recursive https://github.com/libigl/libigl.git ${CMAKE_SOURCE_DIR}/../libigl"
     LIBIGL_INCLUDE_DIR)
 mark_as_advanced(LIBIGL_INCLUDE_DIR)
-message("${LIBIGL_INCLUDE_DIR}")
 
-set(LIBIGL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libigl/cmake")
+set(LIBIGL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/libigl/cmake")
+message(${CMAKE_CURRENT_SOURCE_DIR})
+message(${CMAKE_SOURCE_DIR})
 
 list(APPEND CMAKE_MODULE_PATH "${LIBIGL_INCLUDE_DIR}/../cmake")
 include(libigl)
