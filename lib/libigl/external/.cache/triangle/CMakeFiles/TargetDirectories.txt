@@ -1,3 +1,0 @@
-/Users/Roll/Desktop/libigl/external/.cache/triangle/CMakeFiles/rebuild_cache.dir
-/Users/Roll/Desktop/libigl/external/.cache/triangle/CMakeFiles/edit_cache.dir
-/Users/Roll/Desktop/libigl/external/.cache/triangle/CMakeFiles/triangle-download.dir

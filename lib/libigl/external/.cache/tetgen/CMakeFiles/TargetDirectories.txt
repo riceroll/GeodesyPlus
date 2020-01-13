@@ -1,3 +1,0 @@
-/Users/Roll/Desktop/libigl/external/.cache/tetgen/CMakeFiles/rebuild_cache.dir
-/Users/Roll/Desktop/libigl/external/.cache/tetgen/CMakeFiles/edit_cache.dir
-/Users/Roll/Desktop/libigl/external/.cache/tetgen/CMakeFiles/tetgen-download.dir

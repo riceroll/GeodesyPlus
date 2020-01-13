@@ -1,3 +1,0 @@
-/Users/Roll/Desktop/libigl/external/.cache/predicates/CMakeFiles/rebuild_cache.dir
-/Users/Roll/Desktop/libigl/external/.cache/predicates/CMakeFiles/edit_cache.dir
-/Users/Roll/Desktop/libigl/external/.cache/predicates/CMakeFiles/predicates-download.dir

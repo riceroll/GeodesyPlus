@@ -1,3 +1,0 @@
-/Users/Roll/Desktop/libigl/external/.cache/tutorial_data/CMakeFiles/rebuild_cache.dir
-/Users/Roll/Desktop/libigl/external/.cache/tutorial_data/CMakeFiles/edit_cache.dir
-/Users/Roll/Desktop/libigl/external/.cache/tutorial_data/CMakeFiles/tutorial_data-download.dir
