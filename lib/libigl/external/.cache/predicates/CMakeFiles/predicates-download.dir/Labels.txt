@@ -1,0 +1,14 @@
+# Target labels
+ predicates-download
+# Source files and their labels
+/Users/Roll/Desktop/libigl/external/.cache/predicates/CMakeFiles/predicates-download
+/Users/Roll/Desktop/libigl/external/.cache/predicates/CMakeFiles/predicates-download.rule
+/Users/Roll/Desktop/libigl/external/.cache/predicates/CMakeFiles/predicates-download-complete.rule
+/Users/Roll/Desktop/libigl/external/.cache/predicates/predicates-download-prefix/src/predicates-download-stamp/predicates-download-install.rule
+/Users/Roll/Desktop/libigl/external/.cache/predicates/predicates-download-prefix/src/predicates-download-stamp/predicates-download-mkdir.rule
+/Users/Roll/Desktop/libigl/external/.cache/predicates/predicates-download-prefix/src/predicates-download-stamp/predicates-download-download.rule
+/Users/Roll/Desktop/libigl/external/.cache/predicates/predicates-download-prefix/src/predicates-download-stamp/predicates-download-update.rule
+/Users/Roll/Desktop/libigl/external/.cache/predicates/predicates-download-prefix/src/predicates-download-stamp/predicates-download-patch.rule
+/Users/Roll/Desktop/libigl/external/.cache/predicates/predicates-download-prefix/src/predicates-download-stamp/predicates-download-configure.rule
+/Users/Roll/Desktop/libigl/external/.cache/predicates/predicates-download-prefix/src/predicates-download-stamp/predicates-download-build.rule
+/Users/Roll/Desktop/libigl/external/.cache/predicates/predicates-download-prefix/src/predicates-download-stamp/predicates-download-test.rule

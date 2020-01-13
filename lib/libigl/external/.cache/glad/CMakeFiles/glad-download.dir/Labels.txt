@@ -1,0 +1,14 @@
+# Target labels
+ glad-download
+# Source files and their labels
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/CMakeFiles/glad-download
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/CMakeFiles/glad-download.rule
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/CMakeFiles/glad-download-complete.rule
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/glad-download-prefix/src/glad-download-stamp/glad-download-install.rule
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/glad-download-prefix/src/glad-download-stamp/glad-download-mkdir.rule
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/glad-download-prefix/src/glad-download-stamp/glad-download-download.rule
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/glad-download-prefix/src/glad-download-stamp/glad-download-update.rule
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/glad-download-prefix/src/glad-download-stamp/glad-download-patch.rule
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/glad-download-prefix/src/glad-download-stamp/glad-download-configure.rule
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/glad-download-prefix/src/glad-download-stamp/glad-download-build.rule
+/Users/Roll/Desktop/GeodesyPlus/lib/libigl/external/.cache/glad/glad-download-prefix/src/glad-download-stamp/glad-download-test.rule

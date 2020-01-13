@@ -1,0 +1,11 @@
+# Hashes of file build rules.
+96bfcebaad674944071eadaefdb4d40a CMakeFiles/tetgen-download
+931ee5b8346001f54358720cbfdc9dfc CMakeFiles/tetgen-download-complete
+84c6dac1e3ed284998ff44c34f359dbb tetgen-download-prefix/src/tetgen-download-stamp/tetgen-download-build
+dc7536a8acdc67931d0fed417343ca49 tetgen-download-prefix/src/tetgen-download-stamp/tetgen-download-configure
+9d2152a9c949b26e789829aacfe0fdf6 tetgen-download-prefix/src/tetgen-download-stamp/tetgen-download-download
+cc50d82f0a99cee234f41e9c1ae5b6c6 tetgen-download-prefix/src/tetgen-download-stamp/tetgen-download-install
+614b6c93a5e2c007ca3fe9bd8ce648ae tetgen-download-prefix/src/tetgen-download-stamp/tetgen-download-mkdir
+a6df923d4bfef19aec787d671f60f608 tetgen-download-prefix/src/tetgen-download-stamp/tetgen-download-patch
+eb8dcaaa906f5ca35924bb48b688438f tetgen-download-prefix/src/tetgen-download-stamp/tetgen-download-test
+7cee931385ebc04bbf9fe2d8a15a8f04 tetgen-download-prefix/src/tetgen-download-stamp/tetgen-download-update

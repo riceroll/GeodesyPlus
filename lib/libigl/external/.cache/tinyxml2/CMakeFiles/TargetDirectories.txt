@@ -1,0 +1,3 @@
+/Users/Roll/Desktop/libigl/external/.cache/tinyxml2/CMakeFiles/rebuild_cache.dir
+/Users/Roll/Desktop/libigl/external/.cache/tinyxml2/CMakeFiles/edit_cache.dir
+/Users/Roll/Desktop/libigl/external/.cache/tinyxml2/CMakeFiles/tinyxml2-download.dir

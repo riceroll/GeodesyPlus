@@ -1,0 +1,14 @@
+# Target labels
+ CoMISo-download
+# Source files and their labels
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CMakeFiles/CoMISo-download
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CMakeFiles/CoMISo-download.rule
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CMakeFiles/CoMISo-download-complete.rule
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CoMISo-download-prefix/src/CoMISo-download-stamp/CoMISo-download-install.rule
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CoMISo-download-prefix/src/CoMISo-download-stamp/CoMISo-download-mkdir.rule
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CoMISo-download-prefix/src/CoMISo-download-stamp/CoMISo-download-download.rule
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CoMISo-download-prefix/src/CoMISo-download-stamp/CoMISo-download-update.rule
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CoMISo-download-prefix/src/CoMISo-download-stamp/CoMISo-download-patch.rule
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CoMISo-download-prefix/src/CoMISo-download-stamp/CoMISo-download-configure.rule
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CoMISo-download-prefix/src/CoMISo-download-stamp/CoMISo-download-build.rule
+/Users/Roll/Desktop/libigl/external/.cache/CoMISo/CoMISo-download-prefix/src/CoMISo-download-stamp/CoMISo-download-test.rule
