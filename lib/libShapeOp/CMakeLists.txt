@@ -5,7 +5,8 @@ set(CMAKE_CONFIGURATION_TYPES Release Debug CACHE TYPE INTERNAL FORCE)
   
 # Tell CMake he'll be able to include ".cmake" configurations 
 # files in the folder where the current file is located
-set(CMAKE_MODULE_PATH .)
+
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Find Eigen3
 find_package(Eigen3 REQUIRED)
