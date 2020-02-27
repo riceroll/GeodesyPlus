@@ -1,0 +1,1 @@
+/usr/bin/c++  -std=c++11 -Wall -g -g  -rdynamic CMakeFiles/geodesy.dir/main.cpp.o  -o geodesy -Wl,-rpath,/home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/lib/libShapeOp lib/libShapeOp/libShapeOp.so.0.1.0 /usr/lib/x86_64-linux-gnu/libGLX.so /usr/lib/x86_64-linux-gnu/libOpenGL.so imgui/libimgui.a glfw/src/libglfw3.a -lrt -lm -lX11 -lpthread glad/libglad.a -ldl 

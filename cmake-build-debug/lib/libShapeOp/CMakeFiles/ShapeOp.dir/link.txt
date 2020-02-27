@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -std=c++11 -Wall -g -g  -shared -Wl,-soname,libShapeOp.so.0 -o libShapeOp.so.0.1.0 CMakeFiles/ShapeOp.dir/src/Constraint.cpp.o CMakeFiles/ShapeOp.dir/src/Force.cpp.o CMakeFiles/ShapeOp.dir/src/LSSolver.cpp.o CMakeFiles/ShapeOp.dir/src/Solver.cpp.o CMakeFiles/ShapeOp.dir/api/API.cpp.o 

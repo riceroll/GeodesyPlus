@@ -1,0 +1,26 @@
+/home/mml/Downloads/clion-2019.3.3/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" /home/mml/jianzhe/Research/geodesyPlus
+Cloning into 'eigen'...
+HEAD is now at c50d586b9 bump to 3.2.10
+-- Creating target: igl::core (igl)
+-- Creating target: igl::opengl (igl_opengl)
+Cloning into 'glad'...
+HEAD is now at 09b4969 Update CMakeLists.txt
+-- Creating target: igl::opengl_glfw (igl_opengl_glfw)
+Cloning into 'glfw'...
+HEAD is now at b0796109 Documentation work
+-- Using X11 for window creation
+-- Creating target: igl::opengl_glfw_imgui (igl_opengl_glfw_imgui)
+Cloning into 'imgui'...
+HEAD is now at ebe79bbe Demo: Custom rendering: Minor sizing issue fix.
+Cloning into 'libigl-imgui'...
+HEAD is now at 07ecd38 Update to imgui 1.66b.
+GCC.
+CMake Warning (dev) at lib/libShapeOp/CMakeLists.txt:4 (set):
+  implicitly converting 'TYPE' to 'STRING' type.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+'/usr/include/eigen3
+EIGEN found.
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug

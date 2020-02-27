@@ -1,0 +1,126 @@
+Performing C SOURCE FILE Test CMAKE_HAVE_LIBC_PTHREAD failed with the following output:
+Change Dir: /home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f90b9/fast && /usr/bin/make -f CMakeFiles/cmTC_f90b9.dir/build.make CMakeFiles/cmTC_f90b9.dir/build
+make[1]: Entering directory '/home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f90b9.dir/src.c.o
+/usr/bin/cc   -fPIC -DCMAKE_HAVE_LIBC_PTHREAD   -o CMakeFiles/cmTC_f90b9.dir/src.c.o   -c /home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_f90b9
+/home/mml/Downloads/clion-2019.3.3/bin/cmake/linux/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f90b9.dir/link.txt --verbose=1
+/usr/bin/cc  -fPIC -DCMAKE_HAVE_LIBC_PTHREAD    -rdynamic CMakeFiles/cmTC_f90b9.dir/src.c.o  -o cmTC_f90b9 
+CMakeFiles/cmTC_f90b9.dir/src.c.o: In function `main':
+src.c:(.text+0x3e): undefined reference to `pthread_create'
+src.c:(.text+0x4a): undefined reference to `pthread_detach'
+src.c:(.text+0x5b): undefined reference to `pthread_join'
+src.c:(.text+0x6f): undefined reference to `pthread_atfork'
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_f90b9.dir/build.make:86: recipe for target 'cmTC_f90b9' failed
+make[1]: *** [cmTC_f90b9] Error 1
+make[1]: Leaving directory '/home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_f90b9/fast' failed
+make: *** [cmTC_f90b9/fast] Error 2
+
+
+Source file was:
+#include <pthread.h>
+
+void* test_func(void* data)
+{
+  return data;
+}
+
+int main(void)
+{
+  pthread_t thread;
+  pthread_create(&thread, NULL, test_func, NULL);
+  pthread_detach(thread);
+  pthread_join(thread, NULL);
+  pthread_atfork(NULL, NULL, NULL);
+  pthread_exit(NULL);
+
+  return 0;
+}
+
+Determining if the function pthread_create exists in the pthreads failed with the following output:
+Change Dir: /home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_7503d/fast && /usr/bin/make -f CMakeFiles/cmTC_7503d.dir/build.make CMakeFiles/cmTC_7503d.dir/build
+make[1]: Entering directory '/home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_7503d.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -fPIC -DCHECK_FUNCTION_EXISTS=pthread_create   -o CMakeFiles/cmTC_7503d.dir/CheckFunctionExists.c.o   -c /home/mml/Downloads/clion-2019.3.3/bin/cmake/linux/share/cmake-3.15/Modules/CheckFunctionExists.c
+Linking C executable cmTC_7503d
+/home/mml/Downloads/clion-2019.3.3/bin/cmake/linux/bin/cmake -E cmake_link_script CMakeFiles/cmTC_7503d.dir/link.txt --verbose=1
+/usr/bin/cc  -fPIC -DCHECK_FUNCTION_EXISTS=pthread_create    -rdynamic CMakeFiles/cmTC_7503d.dir/CheckFunctionExists.c.o  -o cmTC_7503d -lpthreads 
+/usr/bin/ld: cannot find -lpthreads
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_7503d.dir/build.make:86: recipe for target 'cmTC_7503d' failed
+make[1]: *** [cmTC_7503d] Error 1
+make[1]: Leaving directory '/home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_7503d/fast' failed
+make: *** [cmTC_7503d/fast] Error 2
+
+
+
+Performing C SOURCE FILE Test CMAKE_HAVE_LIBC_PTHREAD failed with the following output:
+Change Dir: /home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_ecefc/fast && /usr/bin/make -f CMakeFiles/cmTC_ecefc.dir/build.make CMakeFiles/cmTC_ecefc.dir/build
+make[1]: Entering directory '/home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_ecefc.dir/src.c.o
+/usr/bin/cc   -fPIC -DCMAKE_HAVE_LIBC_PTHREAD   -o CMakeFiles/cmTC_ecefc.dir/src.c.o   -c /home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_ecefc
+/home/mml/Downloads/clion-2019.3.3/bin/cmake/linux/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ecefc.dir/link.txt --verbose=1
+/usr/bin/cc  -fPIC -DCMAKE_HAVE_LIBC_PTHREAD    -rdynamic CMakeFiles/cmTC_ecefc.dir/src.c.o  -o cmTC_ecefc 
+CMakeFiles/cmTC_ecefc.dir/src.c.o: In function `main':
+src.c:(.text+0x3e): undefined reference to `pthread_create'
+src.c:(.text+0x4a): undefined reference to `pthread_detach'
+src.c:(.text+0x5b): undefined reference to `pthread_join'
+src.c:(.text+0x6f): undefined reference to `pthread_atfork'
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_ecefc.dir/build.make:86: recipe for target 'cmTC_ecefc' failed
+make[1]: *** [cmTC_ecefc] Error 1
+make[1]: Leaving directory '/home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_ecefc/fast' failed
+make: *** [cmTC_ecefc/fast] Error 2
+
+
+Source file was:
+#include <pthread.h>
+
+void* test_func(void* data)
+{
+  return data;
+}
+
+int main(void)
+{
+  pthread_t thread;
+  pthread_create(&thread, NULL, test_func, NULL);
+  pthread_detach(thread);
+  pthread_join(thread, NULL);
+  pthread_atfork(NULL, NULL, NULL);
+  pthread_exit(NULL);
+
+  return 0;
+}
+
+Determining if the function pthread_create exists in the pthreads failed with the following output:
+Change Dir: /home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_ee8f9/fast && /usr/bin/make -f CMakeFiles/cmTC_ee8f9.dir/build.make CMakeFiles/cmTC_ee8f9.dir/build
+make[1]: Entering directory '/home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_ee8f9.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -fPIC -DCHECK_FUNCTION_EXISTS=pthread_create   -o CMakeFiles/cmTC_ee8f9.dir/CheckFunctionExists.c.o   -c /home/mml/Downloads/clion-2019.3.3/bin/cmake/linux/share/cmake-3.15/Modules/CheckFunctionExists.c
+Linking C executable cmTC_ee8f9
+/home/mml/Downloads/clion-2019.3.3/bin/cmake/linux/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ee8f9.dir/link.txt --verbose=1
+/usr/bin/cc  -fPIC -DCHECK_FUNCTION_EXISTS=pthread_create    -rdynamic CMakeFiles/cmTC_ee8f9.dir/CheckFunctionExists.c.o  -o cmTC_ee8f9 -lpthreads 
+/usr/bin/ld: cannot find -lpthreads
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_ee8f9.dir/build.make:86: recipe for target 'cmTC_ee8f9' failed
+make[1]: *** [cmTC_ee8f9] Error 1
+make[1]: Leaving directory '/home/mml/jianzhe/Research/geodesyPlus/cmake-build-debug/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_ee8f9/fast' failed
+make: *** [cmTC_ee8f9/fast] Error 2
+
+
+
