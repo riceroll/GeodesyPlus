@@ -11,11 +11,11 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
 # Find Eigen3
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
-if(NOT EIGEN3_FOUND)
-    message(ERROR " EIGEN not found.")
-else()
-    message("EIGEN found.")
-endif() 
+#if(NOT EIGEN3_FOUND)
+#    message(ERROR " EIGEN not found.")
+#else()
+#    message("EIGEN found.")
+#endif() 
 
 # Where are the headers found?
 include_directories("src")

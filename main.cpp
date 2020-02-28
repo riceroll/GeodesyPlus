@@ -521,22 +521,28 @@ int main(int argc, char **argv) {
   auto assign_flat_mesh =[&]() {
 
     V_out.resize(nodes.size(), 3);
-    F_out.resize(faces.size(), 3);
+    F_out.resize(faces.size()-1, 3);
 
     for (auto n : nodes) {
       V_out.row(n->idx) << n->pos;
     }
 
     for (auto f : faces) {
+      if (f->is_external) continue;
+
       int i0 = f->halfedge->node->idx;
       int i1 = f->halfedge->next->node->idx;
       int i2 = f->halfedge->next->next->node->idx;
       F_out.row(f->idx) << i0, i1, i2;
+      if (debug) {
+        cout<<"face_id: " << f->idx<<endl;
+        cout<<f->centroid()<<endl;
+      }
     }
   };
 
   auto redraw = [&]() {
-    cout<<"start redraw..."<<endl;
+    cout<<"start redraw...."<<endl;
 
 //    viewer.data().clear();  // this line causes bug
     viewer.data().V.resize(0,3);
@@ -547,6 +553,7 @@ int main(int argc, char **argv) {
     viewer.data().labels_strings.clear();
 
     viewer.data().label_color << 0.5, 0.5, 0.5;
+    viewer.data().point_size = 10;
 
     if (display_label) {
       switch (display_mode) {
@@ -834,7 +841,7 @@ int main(int argc, char **argv) {
         viewer.data().set_mesh(V_out, F_out);
 
         FC_out.resize(F_out.rows(), 3);
-        for (int i = 0; i < faces.size(); i++) {
+        for (int i = 0; i < F_out.rows(); i++) {
           Face *f = faces[i];
           Eigen::RowVector3d color;
           color << 0, 0, 0;
@@ -2742,6 +2749,9 @@ int main(int argc, char **argv) {
   };
 
   auto compute_geodesic_line = [&](double geodesic, double geodesy) {
+    // only keep one geodesic trace each time
+    // change nodes_tr_trace to nodes_tr_cycle
+
     vector<Node_tr_trace*> nodes_tr_trace;
 
     for (auto e : edges_tr) {
@@ -2852,6 +2862,8 @@ int main(int argc, char **argv) {
      *  faces_tr
      *  trace_tr: NodeOnHalfedge (*Edge, )
     */
+
+    // create new struct, HalfedgeMesh, because I might need multiple meshes
 
   };
 
