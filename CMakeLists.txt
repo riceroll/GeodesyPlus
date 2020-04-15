@@ -89,10 +89,19 @@ include_directories("./lib/libShapeOp/src")
 add_subdirectory(lib/libShapeOp)
 
 # Add your project files
-file(GLOB SRCFILES *.cpp)
-add_executable(${PROJECT_NAME} ${SRCFILES})
+#file(GLOB SRCFILES *.cpp)
+
+# ============================= linking ===============================
+
+add_library(tracer SHARED tracer.cpp)
+target_link_libraries(tracer  igl::core igl::opengl_glfw_imgui)
 
 
-target_link_libraries(${PROJECT_NAME} igl::core igl::opengl_glfw_imgui)
-target_link_libraries(${PROJECT_NAME} ShapeOp)
+add_executable(${PROJECT_NAME}  geodesy.cpp)
+target_link_libraries(${PROJECT_NAME}  igl::core igl::opengl_glfw_imgui ShapeOp)
+target_link_libraries(${PROJECT_NAME}  tracer)
+
+
+
+
 
