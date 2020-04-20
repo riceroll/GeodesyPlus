@@ -5128,7 +5128,7 @@ int main(int argc, char **argv) {
     }
 
     if (ImGui::Button("trim-mesh")) {
-      trim_mesh();
+      mesh_tr->trim_mesh(viewer, test2);
     }
 
     if (ImGui::CollapsingHeader("tools", ImGuiTreeNodeFlags_DefaultOpen)) {

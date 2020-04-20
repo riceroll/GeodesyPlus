@@ -147,19 +147,21 @@ struct Face {
 
 struct HalfedgeMeshTr {
   // new trace data
-  vector<NodeTr*> nodes;
-  vector<EdgeTr*> edges;
-  vector<FaceTr*> faces;
-  vector<HalfedgeTr*> halfedges;
-  vector<Halfedge*> boundary; // boundary of the flattened mesh
-  vector<HalfedgeTr*> boundary_tr; // boundary of the rebuilt mesh
-  vector<vector<NodeTr_cycle*>> cycles_next;
-  FaceTr* face_exterior;
+  vector<NodeTr *> nodes;
+  vector<EdgeTr *> edges;
+  vector<FaceTr *> faces;
+  vector<HalfedgeTr *> halfedges;
+  vector<Halfedge *> boundary; // boundary of the flattened mesh
+  vector<HalfedgeTr *> boundary_tr; // boundary of the rebuilt mesh
+  vector<vector<NodeTr_cycle *>> cycles_next;
+  FaceTr *face_exterior;
 
-  vector<NodeTr_cycle*> nodes_next;
+  vector<NodeTr_cycle *> nodes_next;
 
-  vector<vector<NodeTr_trace*>> nodes_tr_traces;
-  set<NodeTr*> nodes_accepted;    // source of heat method
+  vector<vector<NodeTr_trace *>> nodes_tr_traces;
+  set<NodeTr *> nodes_accepted;    // source of heat method
+
+  void trim_mesh(igl::opengl::glfw::Viewer& viewer, int test2);
 };
 
 struct NodeTr {
