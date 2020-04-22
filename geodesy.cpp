@@ -707,6 +707,11 @@ int main(int argc, char **argv) {
 
             }
           break;
+
+        case DisplayMode_Graph:
+          for (auto n : nodes) {
+            viewer.data().add_label(n->pos, to_string(n->idx));
+          }
       }
     }
 
@@ -2336,6 +2341,12 @@ int main(int argc, char **argv) {
     for (auto n : nodes) {
       n->pos -= translation;
       n->pos *= scale_ratio;
+      n->pos_origin -= translation;
+      n->pos_origin *= scale_ratio;
+    }
+
+    for (auto e : edges) {
+      e->len_3d *= scale_ratio;
     }
   };
 
@@ -3768,6 +3779,25 @@ int main(int argc, char **argv) {
               << f->opacity() * scale_ratio * scale_ratio << endl;
       }
     }
+  };
+
+  auto save_graph = [&]() {
+    std::string outname = igl::file_dialog_save();
+
+    std::ofstream ofile(outname);
+
+    for (auto n : nodes) {
+      ofile << n->idx << " " << n->pos.x() << " " << n->pos.y() << " " << n->pos.z() << " " << n->idx_iso << " " << n->idx_grad << " " << n->right->idx << " " << n->left->idx << " ";
+      if (n->up) ofile << n->up->idx;
+      else ofile << to_string(-1);
+      ofile << " ";
+      if (n->down) ofile << n->down->idx;
+      else ofile << to_string(-1);
+      ofile <<std::endl;
+    }
+
+    ofile << "# center "<<std::to_string(center.x())<<" "<<std::to_string(center.y())<<" "<<std::to_string(center.z())<<std::endl;
+
   };
 
 // new tracing ===============================================
@@ -5220,71 +5250,12 @@ int main(int argc, char **argv) {
         if (ImGui::Button("save")) {
           save();
         }
-      }
 
-      if (ImGui::Button("boundary") ) {
-        project();
-        compute_boundary();
-
-        Eigen::MatrixXd points_a(mesh_tr->boundary.size(), 3);
-        Eigen::MatrixXd points_b(mesh_tr->boundary.size(), 3);
-        Eigen::MatrixXd color_e(mesh_tr->boundary.size(), 3);
-
-        int i = 0;
-        for (auto h : mesh_tr->boundary) {
-          points_a.row(i) = h->node->pos;
-          points_b.row(i) = h->twin->node->pos;
-          color_e.row(i) = color_green;
-          i++;
-        }
-        init_draw();
-        viewer.data().add_edges(points_a, points_b, color_e);
-      }
-
-      if (ImGui::Button("triangulate")) {
-        triangulate_tr();
-      }
-
-      if (ImGui::Button("meshing")) {
-        convert_to_mesh();
-      }
-
-      if (ImGui::Button("geodesicValue")) {
-        compute_geodesic();
-      }
-
-      if (ImGui::Button("GeodesyValue")) {
-        compute_geodesy();
-      }
-
-      if (ImGui::Button("geodesicLine")) {
-        redraw();
-
-        mesh_tr->nodes_tr_traces.clear();
-        mesh_tr->nodes_accepted.clear();
-
-        compute_boundary();
-        compute_geodesic();
-        compute_geodesic_line(geodesic_gap, geodesy_gap);
-
-        draw_geodesic_lines();
-
-      }
-
-      if (ImGui::Button("geodesyLine")) {
-        double geodesy = 1.0;
-        redraw();
-
-        while (geodesy > 0) {
-          compute_geodesy_line(geodesy);
-          geodesy -= geodesic_gap;
+        if (ImGui::Button("save_graph")) {
+          save_graph();
         }
       }
 
-      if (ImGui::Button("trim")) {
-
-
-      }
 /*
       { // might be useful
 //      if (ImGui::Button("save_img")) {
