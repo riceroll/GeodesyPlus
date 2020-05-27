@@ -1,5 +1,32 @@
 #include "flattener.h"
 
+void HalfedgeMesh::reorder_iso() {
+  while (true) {
+    bool is_ordered = true;
+    for (auto n : this->nodes) {
+      if (n->idx == -1) continue;
+
+      if (n->down) {
+        if (n->down->idx_iso < n->idx_iso - 1) {
+          is_ordered = false;
+          Node *n_iter = n;
+          do {
+            n_iter->idx_iso = n->down->idx_iso + 1;
+
+            if (n_iter->right) n_iter = n_iter->right;
+            else {
+              cout << "n_iter->right does not exist" << endl;
+              getchar();
+            }
+          } while (n_iter != n);
+        }
+      }
+    }
+    if (is_ordered) break;
+  }
+};
+
+
 float Edge::length() {
   return ((*next(nodes.begin(), 0))->pos - (*next(nodes.begin(), 1))->pos ).norm();
 }

@@ -36,337 +36,15 @@
 #include "Constraint.h"
 #include "Force.h"
 
+// Geodesy
+#include "flattener.h"
 #include "tracer.h"
 
 using namespace std;
-//
-//struct Node;
-//struct Edge;
-//struct Face;
-//struct Halfedge;
-//
-//struct Node {
-//  int idx = -1;
-//  int idx_iso = -1;   // idx of the isoline (not segment)
-//  int idx_grad = -1;  // idx of the gradient line, if equals to -1, this is upsampled node
-//  bool is_cone = false;
-//  bool is_saddle = false;
-//  bool on_saddle_boundary = false;
-//  bool on_saddle_side = false;
-//  bool is_interp_bridge = false;
-//
-//  Eigen::RowVector3d pos;
-//  Eigen::RowVector3d pos_origin;
-//  Eigen::RowVector3d velocity;
-//
-//  Node* left = nullptr;
-//  Node* right = nullptr;
-//  Node* up = nullptr;
-//  Node* down = nullptr;
-//  Node* left_saddle = nullptr;  // for saddle fan
-//  Node* right_saddle = nullptr; // for saddle fan
-//  set<Edge*> edges;
-//  Halfedge* halfedge = nullptr;
-//
-//  // for interpolation & merging
-//  int i_unvisited_vector = -1;
-//  int i_path = -1;
-//  bool visited_interpolation = false;
-//  bool is_end = false;
-//  bool is_left_end = false;
-//  bool is_right_end = false;
-//  vector<Node*> ups{};
-//  vector<Node*> downs{};
-//
-//  // for printing
-//  bool is_move = false; // extrude
-//  float shrinkage = -1; // defaut shrinkage
-//
-//  // for mapping
-//  Eigen::RowVector3d color = Eigen::RowVector3d(1.0, 0.0, 0.0);
-//};
-//
-//struct Edge {
-//  int idx = -1;
-//  string spring = "stretch";      // stretch
-//
-//  float len_3d;     // initial length on 3D surface
-//  float len;        // current length
-//  float len_prev;   // compute convergence
-//  float rest_len;
-//  float shrinkage;  // shrinkage = 1 - len_3d / len; how much it shrinks by
-//
-//  set<Node*> nodes;
-//  Halfedge* halfedge = nullptr;
-//  vector<Node*> nodes_interp_as_left{};   // begin from e->stretch
-//  vector<Node*> nodes_interp_as_right{};
-//  vector<Node*> nodes_interp{};
-//
-//  float length() {
-//    return ((*next(nodes.begin(), 0))->pos - (*next(nodes.begin(), 1))->pos ).norm();
-//  }
-//  Eigen::RowVector3d centroid() {
-//    return ((*nodes.begin())->pos + (*next(nodes.begin(), 1))->pos) / 2;
-//  }
-//};
-//
-//struct Halfedge {
-//  int idx = -1;
-//
-//  Node* node = nullptr;
-//  Edge* edge = nullptr;
-//  Face* face = nullptr;
-//  Halfedge* prev = nullptr;
-//  Halfedge* next = nullptr;
-//  Halfedge* twin = nullptr;
-//
-//  float length() {
-//    return this->edge->length();
-//  }
-//  Eigen::RowVector3d vector() {
-//    Eigen::RowVector3d p1 = this->node->pos;
-//    Eigen::RowVector3d p2 = this->twin->node->pos;
-//    Eigen::RowVector3d vec = p2 - p1;
-//    return vec;
-//  }
-//};
-//
-//struct Face {
-//  int idx = -1;
-//  bool is_external = false;
-//  bool is_saddle = false;
-//
-//  Halfedge* halfedge = nullptr;
-//
-//  Eigen::RowVector3d centroid() {
-//    Halfedge* h0 = this->halfedge;
-//    Halfedge* h = h0;
-//    int num_nodes = 0;
-//    Eigen::RowVector3d p;
-//    p << 0,0,0;
-//
-//    while (true) {
-//      p += h->node->pos;
-//      num_nodes++;
-//
-//      h = h->next;
-//      if (h == h0) break;
-//    }
-//    p /= num_nodes;
-//
-//    return p;
-//  }
-//  Eigen::RowVector3d normal() {
-//    Eigen::RowVector3d n = this->halfedge->vector().cross(this->halfedge->next->vector());
-//    n.normalize();
-//    return n;
-//  }
-//
-//  Node* node(int i) {
-//    Halfedge* h = this->halfedge;
-//    if (i == 0) return h->node;
-//    if (i == 1) return h->next->node;
-//    if (i == 2) return h->next->next->node;
-//  }
-//
-//  // for interpolation
-//  bool is_up = true;
-//  bool visited_interpolation = false;
-//  Edge *e_stretch = nullptr;
-//  Edge *e_bridge_left = nullptr;
-//  Edge *e_bridge_right = nullptr;
-//  Node *n_bridge = nullptr;
-//  Node *n_stretch_left = nullptr;
-//  Node *n_stretch_right = nullptr;
-//  Face* left = nullptr;
-//  Face* right =nullptr;
-//  Eigen::RowVector3d pos_stretch_mid = Eigen::RowVector3d(0, 0, 0);
-//  vector<Eigen::RowVector3d> pos_interps;
-//  int num_interp = 0;
-//  Eigen::RowVector3d vec_bridge = Eigen::RowVector3d(0,0,0);
-//  Eigen::RowVector3d vec_stretch = Eigen::RowVector3d(0,0,0);
-//
-//  double area() {
-//    Eigen::RowVector3d v1 = this->halfedge->prev->node->pos - this->halfedge->node->pos;
-//    Eigen::RowVector3d v2 = this->halfedge->next->node->pos - this->halfedge->node->pos;
-//    double area = v1.cross(v2).norm() / 2;
-//    return area;
-//  }
-//
-//  double area_origin() {
-//    Eigen::RowVector3d v1_origin = this->halfedge->prev->node->pos_origin - this->halfedge->node->pos_origin;
-//    Eigen::RowVector3d v2_origin = this->halfedge->next->node->pos_origin - this->halfedge->node->pos_origin;
-//    double area_origin = v1_origin.cross(v2_origin).norm() / 2;
-//    return area_origin;
-//  }
-//
-//  double opacity() {
-//    double opacity = this->area_origin() / this->area();
-//    if (opacity > 1) return 1.0;
-//    if (opacity < 0) return 0.0;
-//    return opacity;
-//  }
-//
-//};
-
-////////////// new trace struct ///////////////////
-//struct HalfedgeMeshTr;
-//struct NodeTr;
-//struct EdgeTr;
-//struct FaceTr;
-//struct HalfedgeTr;
-//struct NodeTr_trace;
-//struct NodeTr_cycle;
-//
-//struct HalfedgeMeshTr {
-//  // new trace data
-//  vector<NodeTr*> nodes;
-//  vector<EdgeTr*> edges;
-//  vector<FaceTr*> faces;
-//  vector<HalfedgeTr*> halfedges;
-//  vector<Halfedge*> boundary; // boundary of the flattened mesh
-//  vector<HalfedgeTr*> boundary_tr; // boundary of the rebuilt mesh
-//  vector<vector<NodeTr_cycle*>> cycles_next;
-//  FaceTr* face_exterior;
-//
-//  vector<NodeTr_cycle*> nodes_next;
-//
-//  vector<vector<NodeTr_trace*>> nodes_tr_traces;
-//  set<NodeTr*> nodes_accepted;    // source of heat method
-//};
-//
-//struct NodeTr {
-//  int id = -1;
-//
-//  HalfedgeTr* halfedge = nullptr;
-//
-//  Eigen::RowVector3d pos;
-//
-//  double geodesic;
-//  double geodesy;
-//};
-//
-//struct HalfedgeTr {
-//  int id = -1;
-//
-//  NodeTr* node = nullptr;
-//  EdgeTr* edge = nullptr;
-//  FaceTr* face = nullptr;
-//  HalfedgeTr* prev = nullptr;
-//  HalfedgeTr* next = nullptr;
-//  HalfedgeTr* twin = nullptr;
-//
-//  Eigen::RowVector3d vector() {
-//    Eigen::RowVector3d p1 = this->node->pos;
-//    Eigen::RowVector3d p2 = this->twin->node->pos;
-//    Eigen::RowVector3d vec = p2 - p1;
-//    return vec;
-//  }
-//
-//  void draw(igl::opengl::glfw::Viewer &viewer, bool label=false, int id=0) {
-//    if (not this->twin) {
-//      cerr<<"no twin"<<endl;
-//    }
-//    else {
-//      Eigen::RowVector3d axis = this->twin->node->pos - this->node->pos;
-//      auto z_ax = Eigen::RowVector3d(0,0,1);
-//      Eigen::RowVector3d shift = z_ax.cross(axis);
-//      shift.normalize();
-//      Eigen::MatrixXd psa(2,3);
-//      Eigen::MatrixXd psb(2,3);
-//      psa.row(0) = this->node->pos + axis * 0.2 + shift * axis.norm() * 0.1;
-//      psa.row(1) = this->node->pos + axis * 0.8 + shift * axis.norm() * 0.1;
-//
-//      psb.row(0) = this->node->pos + axis * 0.8 + shift * axis.norm() * 0.1;
-//      psb.row(1) = this->node->pos + axis * 0.7 + shift * axis.norm() * 0.2;
-//      viewer.data().add_edges(psa, psb, Eigen::RowVector3d(0, 0.8, 0.8));
-//
-//      if (label) {
-//        viewer.data().add_label( (psa + psb)/ 2, to_string(id));
-//      }
-//
-//    }
-//  }
-//};
-//
-//struct EdgeTr {
-//  int id = -1;
-//
-//  HalfedgeTr* halfedge = nullptr;
-//
-//  NodeTr_trace* node_trace = nullptr;
-//  NodeTr_cycle* node_cycle = nullptr;
-//
-//  Eigen::RowVector3d centroid() {
-//    return (halfedge->node->pos + halfedge->twin->node->pos) / 2;
-//  }
-//};
-//
-//struct FaceTr {
-//  int id = -1;
-//
-//  HalfedgeTr* halfedge = nullptr;
-//
-//  bool is_exterior = false;
-//
-//  Eigen::RowVector3d centroid() {
-//    Eigen::RowVector3d p = this->halfedge->node->pos;
-//    p += this->halfedge->next->node->pos;
-//    p += this->halfedge->prev->node->pos;
-//    p /= 3;
-//    return p;
-//  }
-//};
-//
-//struct NodeTr_trace {
-//  EdgeTr* edge = nullptr;
-//
-//  NodeTr_trace* left = nullptr;
-//  NodeTr_trace* right = nullptr;
-//  NodeTr_trace* up = nullptr;
-//  NodeTr_trace* down = nullptr;
-//
-//  Eigen::RowVector3d pos;
-//};
-//
-//struct NodeTr_cycle {
-//  HalfedgeTr* halfedge = nullptr;   // the halfedge this sits on
-//
-//  NodeTr_cycle* left = nullptr;
-//  NodeTr_cycle* right = nullptr;
-//  NodeTr_cycle* up = nullptr;
-//  NodeTr_cycle* down = nullptr;
-//
-//  int id_halfedge_right = -1;
-//  HalfedgeTr* halfedge_right = nullptr;   // the halfedge pointing from this to right node
-//
-//  double t;
-//
-//  Eigen::RowVector3d pos() {
-//    NodeTr* n0 = this->halfedge->node;
-//    NodeTr* n1 = this->halfedge->twin->node;
-//    return n0->pos + this->t * (n1->pos - n0->pos);
-//  }
-//};
 
 //////// template funcs ////////
 template<typename T>
-int get_idx(vector<T>& vec, T ele)
-{
-  int id = 0;
-  for (auto i : vec) {
-    if (i == ele) {
-      cout<<"found"<<endl;
-      return id;
-    }
-    id++;
-  }
-  cout<<"get_idx cannot find"<<endl;
-  return -1;
-}
-
-template<typename T>
-void label_vector(vector<T>& vec)
+inline void label_vector(vector<T>& vec)
 {
   int i = 0;
   for (auto ele : vec) {
@@ -439,7 +117,7 @@ int main(int argc, char **argv) {
 
   Eigen::RowVector3d center;
 
-  vector<Node*> nodes;
+//  vector<Node*> nodes;
   vector<Edge*> edges;
   vector<Face*> faces;
   vector<Halfedge*> halfedges;
@@ -455,6 +133,8 @@ int main(int argc, char **argv) {
   set<Node*> unvisited{};    // for tracing
   vector<Node*> unvisited_vector{}; // for tracing
   vector<Node*> printing_path{};  // for tracing
+
+  auto mesh = new HalfedgeMesh();
 
   auto mesh_tr = new HalfedgeMeshTr();
 
@@ -483,7 +163,7 @@ int main(int argc, char **argv) {
   bool is_display_background_black = true;
 
 
-  float iso_spacing = 10.0;
+//  float iso_spacing = 10.0;
   float shrinkage_cone = 0.28;
   float shrinkage_cone_down = 0.1;
   float radius_cone = 5;
@@ -505,8 +185,9 @@ int main(int argc, char **argv) {
   float w_angle_shear;
   float w_spreading;
   float w_smooth;
-  float gap_size;
+//  float gap_size;
   bool is_flattening = false;
+  bool is_forwarding = false;
   bool debug = true;
 
   // const
@@ -549,7 +230,7 @@ int main(int argc, char **argv) {
     viewer.data().labels_strings.clear();
   };
 
-  auto get_color = [&](float x) {
+  auto get_color = [&](float x, bool stress_map = true) {
     double r, g, b;
 
     const double rone = 0.8;
@@ -558,11 +239,18 @@ int main(int argc, char **argv) {
 
     if (x == -1) return Eigen::RowVector3d(1.0, 1.0, 1.0);
 
-    x = x / 0.33;
-    if ( x > 1) x = 1;
-    if ( x < -1) x = -1;
-    x = (x + 1) / 2;
 
+    x = x / 0.33;
+    if (stress_map) {
+      if (x > 1) x = 1;
+      if (x < -1) x = -1;
+      x = (x + 1) / 2;
+    }
+    else {
+      if (x > geodesic_gap) x = x - geodesic_gap;
+      if (x > geodesy_gap) x = 1.0;
+      else x = 0;
+    }
 
     if (x < 1. / 8.)
     {
@@ -613,10 +301,10 @@ int main(int argc, char **argv) {
 
   auto assign_flat_mesh =[&]() {
 
-    V_out.resize(nodes.size(), 3);
+    V_out.resize(mesh->nodes.size(), 3);
     F_out.resize(faces.size()-1, 3);
 
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       V_out.row(n->idx) << n->pos;
     }
 
@@ -651,13 +339,13 @@ int main(int argc, char **argv) {
     if (display_label) {
       switch (display_mode) {
         case DisplayMode_Segments:
-          for (auto n : nodes) {
+          for (auto n : mesh->nodes) {
             viewer.data().add_label(n->pos, to_string(n->i_unvisited_vector));
           }
           break;
 
         case DisplayMode_Tracing:
-          for (auto n : nodes) {
+          for (auto n : mesh->nodes) {
             viewer.data().add_label(n->pos, to_string(n->i_unvisited_vector));
           }
           if (label_type == LabelType_NumInterp) {
@@ -670,7 +358,7 @@ int main(int argc, char **argv) {
         case DisplayMode_Halfedge:
             switch (label_type) {
               case LabelType_Node:
-                for (auto n : nodes) {
+                for (auto n : mesh->nodes) {
                   viewer.data().add_label(n->pos, to_string(n->idx));
                 }
                 break;
@@ -688,13 +376,13 @@ int main(int argc, char **argv) {
                 break;
 
               case LabelType_Isoline:
-                for (auto n : nodes) {
+                for (auto n : mesh->nodes) {
                   viewer.data().add_label(n->pos, to_string(n->idx_iso));
                 }
                 break;
 
               case LabelType_Gradline:
-                for (auto n : nodes) {
+                for (auto n : mesh->nodes) {
                   viewer.data().add_label(n->pos, to_string(n->idx_grad));
                 }
                 break;
@@ -709,7 +397,7 @@ int main(int argc, char **argv) {
           break;
 
         case DisplayMode_Graph:
-          for (auto n : nodes) {
+          for (auto n : mesh->nodes) {
             viewer.data().add_label(n->pos, to_string(n->idx));
           }
       }
@@ -717,7 +405,7 @@ int main(int argc, char **argv) {
 
     switch (display_mode) {
       case DisplayMode_Graph: {  // graph
-        for (auto n : nodes) {
+        for (auto n : mesh->nodes) {
           if (n->idx == idx_focus)
             viewer.data().add_points(n->pos, Eigen::RowVector3d(0.9, 0.9, 0));
           else
@@ -773,7 +461,7 @@ int main(int argc, char **argv) {
               if (display_mode == DisplayMode_Segments) {
                 viewer.data().add_points(unvisited_vector[idx_focus]->pos, color_node);
               } else {
-                viewer.data().add_points(nodes[idx_focus]->pos, color_node);
+                viewer.data().add_points(mesh->nodes[idx_focus]->pos, color_node);
               }
             }
               break;
@@ -795,13 +483,13 @@ int main(int argc, char **argv) {
               else if (num_iter == 4)
                 viewer.data().add_points(faces[idx_focus]->pos_stretch_mid, color_node);
               else if (num_iter == 5)
-                viewer.data().add_points(faces[idx_focus]->e_bridge_left->nodes_interp_as_left[int(gap_size)]->pos,
+                viewer.data().add_points(faces[idx_focus]->e_bridge_left->nodes_interp_as_left[int(mesh->gap_size)]->pos,
                                          color_node);
               else if (num_iter == 6)
-                viewer.data().add_points(faces[idx_focus]->e_bridge_right->nodes_interp_as_right[int(gap_size)]->pos,
+                viewer.data().add_points(faces[idx_focus]->e_bridge_right->nodes_interp_as_right[int(mesh->gap_size)]->pos,
                                          color_node);
               else if (num_iter == 7)
-                viewer.data().add_points(faces[idx_focus]->pos_interps[int(gap_size)], color_node);
+                viewer.data().add_points(faces[idx_focus]->pos_interps[int(mesh->gap_size)], color_node);
             }
               break;
 
@@ -920,7 +608,7 @@ int main(int argc, char **argv) {
         Eigen::MatrixXd colors(printing_path.size() - 1, 3);
 
         for (int i = 0; i < printing_path.size() - 1; i++) {
-          Eigen::RowVector3d color = get_color(printing_path[i + 1]->shrinkage);
+          Eigen::RowVector3d color = get_color(printing_path[i + 1]->shrinkage, false);
 
           p1s.row(i) = printing_path[i]->pos;
           p2s.row(i) = printing_path[i + 1]->pos;
@@ -1023,13 +711,13 @@ int main(int argc, char **argv) {
   auto subdivide_edge = [&](Node* n) {
     if (n->right) {
       Eigen::RowVector3d vec = n->right->pos - n->pos;
-      int num_insert = floor(vec.norm() / iso_spacing); // number of inserted vertices on one iso line
+      int num_insert = floor(vec.norm() / mesh->iso_spacing); // number of inserted vertices on one iso line
       float t_step = 1.0 / (num_insert + 1);
 
       Node *n_prev = n;
       for (int i = 1; i <= num_insert; i++) {
         Node *n_new = new Node();
-        n_new->idx = nodes.size();
+        n_new->idx = mesh->nodes.size();
         n_new->pos = n->pos + vec * t_step * i;
         n_new->pos_origin = n_new->pos;
         n_new->idx_iso = n->idx_iso;
@@ -1038,7 +726,7 @@ int main(int argc, char **argv) {
         n_new->left->right = n_new;
         n_new->right->left = n_new;
         n_prev = n_new;
-        nodes.push_back(n_new);
+        mesh->nodes.push_back(n_new);
       }
     }
   };
@@ -1314,10 +1002,10 @@ int main(int argc, char **argv) {
     double dist = (n_left->pos - n_right->pos).norm();
     Eigen::RowVector3d vec = n_right->pos - n_left->pos;
     vec.normalize();
-    int num_nodes = int( dist / iso_spacing);
+    int num_nodes = int( dist / mesh->iso_spacing);
     for (int i = 0; i < num_nodes; i++) {
       Node* n_new = new Node();
-      n_new->idx = nodes.size();
+      n_new->idx = mesh->nodes.size();
       n_new->pos = n_left->pos + vec * (dist / (num_nodes + 1)) * (i + 1);
       n_new->pos_origin = n_new->pos;
       n_new->idx_iso = n_left->idx_iso;
@@ -1331,14 +1019,14 @@ int main(int argc, char **argv) {
         cout<<"n_left->right_saddle: "<<n_left->right_saddle->idx<<endl;
       }
       else {
-        n_new->left = nodes[nodes.size() - 1];
+        n_new->left = mesh->nodes[mesh->nodes.size() - 1];
         n_new->left->right = n_new;
       }
       if (i == num_nodes - 1) {
         n_new->right = n_right;
         n_right->left_saddle = n_new;
       }
-      nodes.push_back(n_new);
+      mesh->nodes.push_back(n_new);
     }
 
   };
@@ -1583,13 +1271,13 @@ int main(int argc, char **argv) {
     w_spreading = 0.0;
     w_flatten = 3.0;
     w_smooth = 0.1;
-    gap_size = 0.48;
+    mesh->gap_size = 0.48;
   };
 
   auto reorder_iso = [&]() {
     while (true) {
       bool is_ordered = true;
-      for (auto n : nodes) {
+      for (auto n : mesh->nodes) {
         if (n->idx == -1) continue;
 
         if (n->down) {
@@ -1613,9 +1301,9 @@ int main(int argc, char **argv) {
   };
 
   auto fix_saddle_menu = [&]() {
-    int nodes_size = nodes.size();
+    int nodes_size = mesh->nodes.size();
     for (int i=0; i<nodes_size; i++) {
-      Node* n = nodes[i];
+      Node* n = mesh->nodes[i];
       if (n->idx_grad != -1 and (n->right and n->up)) {
         Node *n_right = n->right;
         Node *n_up = n->up;
@@ -1637,9 +1325,9 @@ int main(int argc, char **argv) {
   auto triangulate = [&]() {
     cout<<"triangulating......"<<endl;
 
-    int nodes_size = nodes.size();
+    int nodes_size = mesh->nodes.size();
     for (int i = 0; i < nodes_size; i++) {
-      Node* n = nodes[i];
+      Node* n = mesh->nodes[i];
 
       // detect quads (up right quad of each node)
       if (debug) {  cout<<n->idx<<endl; }
@@ -1769,13 +1457,13 @@ int main(int argc, char **argv) {
             center_pos /= boundary_top.size();
 
             Node *n_center = new Node();
-            n_center->idx = nodes.size();
+            n_center->idx = mesh->nodes.size();
             n_center->pos = center_pos;
             n_center->pos_origin = center_pos;
             n_center->idx_iso = -1; // TODO: indexing for inserted isoline
             n_center->idx_grad = -1;
             n_center->is_cone = true;
-            nodes.push_back(n_center);
+            mesh->nodes.push_back(n_center);
             cones.push_back(n_center);
 
             int i = 0;
@@ -1873,13 +1561,13 @@ int main(int argc, char **argv) {
         center_pos /= saddle_boundary.size();
 
         Node *n_center = new Node();
-        n_center->idx = nodes.size();
+        n_center->idx = mesh->nodes.size();
         n_center->pos = center_pos;
         n_center->pos_origin = center_pos;
         n_center->idx_iso = -1;
         n_center->idx_grad = -1;
         n_center->is_saddle = true;
-        nodes.push_back(n_center);
+        mesh->nodes.push_back(n_center);
         saddles.push_back(n_center);
 
         for (auto n_iter : saddle_boundary) {
@@ -1898,9 +1586,9 @@ int main(int argc, char **argv) {
 
   auto upsample = [&]() {
     cout<<"upsampling.....";
-    int nodes_size = nodes.size();
+    int nodes_size = mesh->nodes.size();
     for (int i=0; i<nodes_size; i++) {
-      Node* n = nodes[i];
+      Node* n = mesh->nodes[i];
       subdivide_edge(n);
     }
     cout<<"done."<<endl;
@@ -1914,7 +1602,7 @@ int main(int argc, char **argv) {
     vector<Node *> ns_triplet;
     vector<Edge *> es_triplet;
     // find first triangle
-    for (Node *n_a : nodes) {
+    for (Node *n_a : mesh->nodes) {
       Node *n_b = n_a->up;
       if (!n_b) continue;
 
@@ -2049,7 +1737,7 @@ int main(int argc, char **argv) {
   };
 
   auto texture_map = [&]() {
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       n->color = hit(n);
     }
   };
@@ -2060,15 +1748,15 @@ int main(int argc, char **argv) {
     cout<<"done."<<endl<<"Updating position......";
     { // flattening velocity
       double d_max = 0;
-      for (auto n : nodes) if (abs(n->pos.z()) > d_max) d_max = abs(n->pos.z());
+      for (auto n : mesh->nodes) if (abs(n->pos.z()) > d_max) d_max = abs(n->pos.z());
 
       double xy_max = 0;
-      for (auto n : nodes) {
+      for (auto n : mesh->nodes) {
         if (abs(n->pos.x()) > xy_max) xy_max = abs(n->pos.x());
         if (abs(n->pos.y()) > xy_max) xy_max = abs(n->pos.y());
       }
 
-      for (auto n : nodes) {
+      for (auto n : mesh->nodes) {
         float speed = ( w_flatten * exp(log(d_max / xy_max) * (1 / damping_flatten) ) ) * (n->pos.z() / d_max) ;
         n->velocity = Eigen::RowVector3d(0, 0, - speed);
         n->pos += n->velocity;
@@ -2081,8 +1769,8 @@ int main(int argc, char **argv) {
 
     // setPoints
     {
-      points.resize(3, nodes.size());
-      for (auto n : nodes) {
+      points.resize(3, mesh->nodes.size());
+      for (auto n : mesh->nodes) {
         points(0, n->idx) = n->pos.x();
         points(1, n->idx) = n->pos.y();
         points(2, n->idx) = n->pos.z();
@@ -2091,7 +1779,7 @@ int main(int argc, char **argv) {
     }
 
     // ClosenessConstraint (prevent drifting)
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       std::vector<int> id_vector;
       id_vector.push_back(n->idx);
       auto c = std::make_shared<ShapeOp::ClosenessConstraint>(id_vector, w_closeness, solver->getPoints());
@@ -2118,6 +1806,9 @@ int main(int argc, char **argv) {
       id_vector.push_back(e->halfedge->twin->node->idx);
       auto weight = w_stretch;
       auto c = std::make_shared<ShapeOp::EdgeStrainConstraint>(id_vector, weight, solver->getPoints(), 1, 1.5);
+      if (is_forwarding) {
+        c = std::make_shared<ShapeOp::EdgeStrainConstraint>(id_vector, weight, solver->getPoints(), 0.7, 0.8);
+      }
       if (e->spring == "bridge") {
         weight = w_bridge;
         c = std::make_shared<ShapeOp::EdgeStrainConstraint>(id_vector, weight, solver->getPoints());
@@ -2142,9 +1833,9 @@ int main(int argc, char **argv) {
       int i_2 = e->halfedge->next->next->node->idx;
       int i_3 = e->halfedge->twin->next->next->node->idx;
 
-      Eigen::RowVector3d v01 = nodes[i_1]->pos - nodes[i_0]->pos;
-      Eigen::RowVector3d v02 = nodes[i_2]->pos - nodes[i_0]->pos;
-      Eigen::RowVector3d v03 = nodes[i_3]->pos - nodes[i_0]->pos;
+      Eigen::RowVector3d v01 = mesh->nodes[i_1]->pos - mesh->nodes[i_0]->pos;
+      Eigen::RowVector3d v02 = mesh->nodes[i_2]->pos - mesh->nodes[i_0]->pos;
+      Eigen::RowVector3d v03 = mesh->nodes[i_3]->pos - mesh->nodes[i_0]->pos;
 
       double theta = acos( v01.dot(v02) / (v01.norm() * v02.norm() ) );
       double phi   = acos( v01.dot(v03) / (v01.norm() * v03.norm() ) );
@@ -2169,7 +1860,7 @@ int main(int argc, char **argv) {
 
     // AngleConstraint for stretch springs
     {
-      for (auto n : nodes) {
+      for (auto n : mesh->nodes) {
         std::vector<int> id_vector;
         if (n->idx_iso != -1) { // not the center point nor the saddle point
           std::vector<int> id_vector;
@@ -2225,7 +1916,7 @@ int main(int argc, char **argv) {
     // PlaneConstraint
     {
       std::vector<int> id_vector;
-      for (auto n : nodes) {
+      for (auto n : mesh->nodes) {
         id_vector.push_back(n->idx);
       }
       auto c = std::make_shared<ShapeOp::PlaneConstraint>(id_vector, w_flatten, solver->getPoints());
@@ -2234,7 +1925,7 @@ int main(int argc, char **argv) {
 
     // flattening force (cannot see any effect?)
     {
-      for (auto n : nodes) {
+      for (auto n : mesh->nodes) {
         double d = n->pos.z();  // distance to the target plane
         double m = d * w_flatten;
         Eigen::RowVector3d force(0., 0., -m);
@@ -2270,7 +1961,7 @@ int main(int argc, char **argv) {
     solver->solve(num_iter);
 
     points = solver->getPoints();
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       n->pos = points.col(n->idx);
     }
     for (auto e : edges) {
@@ -2282,7 +1973,7 @@ int main(int argc, char **argv) {
   };
 
   auto smooth = [&]() {
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       if ((not n->left) or (not n->right)) continue;
       if (n->idx_iso == -1) continue;
       if (not(n->left->idx_iso == n->right->idx_iso and n->right->idx_iso == n->idx_iso)) {
@@ -2324,7 +2015,7 @@ int main(int argc, char **argv) {
     double z_min = 99999;
     double x_span, y_span, z_span;
 
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       if (n->pos.x() > x_max) x_max = n->pos.x();
       if (n->pos.x() < x_min) x_min = n->pos.x();
       if (n->pos.y() > y_max) y_max = n->pos.y();
@@ -2338,7 +2029,7 @@ int main(int argc, char **argv) {
     cout << "span: " << x_span << " " << y_span << endl;
     scale_ratio = min((platform_length - 1) / x_span, (platform_width - 1) / y_span);
     Eigen::RowVector3d translation = Eigen::RowVector3d((x_max + x_min) / 2, (y_max + y_min) / 2, 0);
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       n->pos -= translation;
       n->pos *= scale_ratio;
       n->pos_origin -= translation;
@@ -2352,7 +2043,7 @@ int main(int argc, char **argv) {
 
   auto interpolate = [&]() {
     int i_iso_max = 0;
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       if (n->idx_iso > i_iso_max) i_iso_max = n->idx_iso;
     }
 
@@ -2364,7 +2055,7 @@ int main(int argc, char **argv) {
 
         bool found = false;
         Node *n_iter = nullptr;
-        for (auto n : nodes) {
+        for (auto n : mesh->nodes) {
           if (n->idx_iso == iso_iter and (not n->visited_interpolation)
               and (not n->on_saddle_boundary)) {
             n_iter = n;   // begin with any unvisited node in any loop of the iso
@@ -2559,7 +2250,7 @@ int main(int argc, char **argv) {
             Eigen::RowVector3d vec_mid = f->pos_stretch_mid - f->n_bridge->pos;
             double iso_distance = abs(vec_mid.dot(vec_perpendicular));
             f->num_interp = int(
-              iso_distance / (2 * gap_size));  // double gap_size first, double num after smoothing
+              iso_distance / (2 * mesh->gap_size));  // double mesh->gap_size first, double num after smoothing
 
 //                if (f->n_bridge->is_cone) f->num_interp = 0;  // TODO
           }
@@ -2765,7 +2456,7 @@ int main(int argc, char **argv) {
 
   auto merge = [&]() {
 
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       n->i_unvisited_vector = unvisited_vector.size();
       unvisited_vector.push_back(n);
       unvisited.emplace(n);
@@ -2965,7 +2656,7 @@ int main(int argc, char **argv) {
 
     cout << "connect ups and downs" << endl;
     // connect ups and downs
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       if (n->is_cone or n->is_saddle) { // summit / saddle
         for (auto h : get_halfedges_of_node(n)) {
           if (h->edge->nodes_interp.size() > 0) {
@@ -3047,7 +2738,7 @@ int main(int argc, char **argv) {
       // find a random node on the lowest loop
       {
         iso_min = 1e8;
-        for (auto n : nodes) {
+        for (auto n : mesh->nodes) {
           if (not unvisited.count(n)) continue;
           if (n->is_cone or n->is_saddle) {
             unvisited.erase(n);
@@ -3488,7 +3179,7 @@ int main(int argc, char **argv) {
 
         Eigen::RowVector3d vec_mid = h->prev->edge->centroid() - h->next->node->pos;
         double iso_distance = abs(vec_mid.dot(vec_height));
-        f->num_interp = int(iso_distance / (2 * gap_size)) * 2;
+        f->num_interp = int(iso_distance / (2 * mesh->gap_size)) * 2;
 
         if (f->num_interp > num_interp_max) num_interp_max = f->num_interp;
       }
@@ -3786,7 +3477,7 @@ int main(int argc, char **argv) {
 
     std::ofstream ofile(outname);
 
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       ofile << n->idx << " " << n->pos.x() << " " << n->pos.y() << " " << n->pos.z() << " " << n->idx_iso << " " << n->idx_grad << " " << n->right->idx << " " << n->left->idx << " ";
       if (n->up) ofile << n->up->idx;
       else ofile << to_string(-1);
@@ -3804,7 +3495,7 @@ int main(int argc, char **argv) {
 
   //project all the nodes onto x, y plane
   auto project = [&]() {
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       n -> pos.z()  = 0;
     }
   };
@@ -3867,7 +3558,7 @@ int main(int argc, char **argv) {
         Node* nb = h->twin->node;
 
         double t = ( y - na->pos.y() ) / ( nb->pos.y() - na->pos.y() );
-        if ( t == 0 or t == 1) {cout<<"Warning: nodes intersected horizontally in in_boundary. "<<endl;}
+        if ( t == 0 or t == 1) {cout<<"Warning: mesh->nodes intersected horizontally in in_boundary. "<<endl;}
         if ( t > 0 and t < 1) {
           // intersected
           double x_intersect = na->pos.x() + ( nb->pos.x() - na->pos.x() ) * t;
@@ -4236,7 +3927,7 @@ int main(int argc, char **argv) {
 
     set<int> ids_iso;
     int idx_iso_max = 0;
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       if (n->idx_iso > idx_iso_max) idx_iso_max = n->idx_iso;
       ids_iso.insert(n->idx_iso);
       if (n->idx_iso == -1) viewer.data().add_points(n->pos, color_red);
@@ -4279,9 +3970,9 @@ int main(int argc, char **argv) {
       }
 
       // get the distance from the barycentric vertex to the bottom segment and compute the value.
-      Node* n0 = nodes[F_out(face_id, 0)];
-      Node* n1 = nodes[F_out(face_id, 1)];
-      Node* n2 = nodes[F_out(face_id, 2)];
+      Node* n0 = mesh->nodes[F_out(face_id, 0)];
+      Node* n1 = mesh->nodes[F_out(face_id, 1)];
+      Node* n2 = mesh->nodes[F_out(face_id, 2)];
 
       double geodesy0 = double(n0->idx_iso) / idx_iso_max;
       double geodesy1 = double(n1->idx_iso) / idx_iso_max;
@@ -4290,16 +3981,16 @@ int main(int argc, char **argv) {
         if (n->id == num_iter) {
           viewer.data().add_points(n->pos, color_green);
 
-          viewer.data().add_points(nodes[F_out(hits[0].id, 0)]->pos, color_blue);
-          viewer.data().add_points(nodes[F_out(hits[0].id, 1)]->pos, color_blue);
-          viewer.data().add_points(nodes[F_out(hits[0].id, 2)]->pos, color_blue);
+          viewer.data().add_points(mesh->nodes[F_out(hits[0].id, 0)]->pos, color_blue);
+          viewer.data().add_points(mesh->nodes[F_out(hits[0].id, 1)]->pos, color_blue);
+          viewer.data().add_points(mesh->nodes[F_out(hits[0].id, 2)]->pos, color_blue);
 
           if (hits.size() != 1) {
             cout<<"hits: "<<hits.size()<<endl;
 
-            viewer.data().add_points(nodes[F_out(hits[1].id, 0)]->pos, color_cyon);
-            viewer.data().add_points(nodes[F_out(hits[1].id, 1)]->pos, color_cyon);
-            viewer.data().add_points(nodes[F_out(hits[1].id, 2)]->pos, color_cyon);
+            viewer.data().add_points(mesh->nodes[F_out(hits[1].id, 0)]->pos, color_cyon);
+            viewer.data().add_points(mesh->nodes[F_out(hits[1].id, 1)]->pos, color_cyon);
+            viewer.data().add_points(mesh->nodes[F_out(hits[1].id, 2)]->pos, color_cyon);
           }
         }
       }
@@ -4907,7 +4598,7 @@ int main(int argc, char **argv) {
     mesh_tr->faces.clear();
     mesh_tr->halfedges.clear();
 
-    for (auto n : nodes) {
+    for (auto n : mesh->nodes) {
       mesh_tr->nodes.push_back(n);
     }
     for (auto e : edges) {
@@ -4951,7 +4642,7 @@ int main(int argc, char **argv) {
     string line;
     while (getline(ifile, line, '\n')) {
       auto n = new Node();
-      nodes.push_back(n);
+      mesh->nodes.push_back(n);
     }
 
     ifile.clear();
@@ -4961,7 +4652,7 @@ int main(int argc, char **argv) {
       vector<string> items;
       boost::split(items, line, boost::is_any_of(" "), boost::token_compress_on);
       if (items[0] == "#") {
-        nodes.resize(nodes.size()-1);
+        mesh->nodes.resize(mesh->nodes.size()-1);
         if (items[1] == "center") {
           center.resize(1, 3);
           center << stod(items[2]), stod(items[3]), stod(items[4]);
@@ -4969,16 +4660,16 @@ int main(int argc, char **argv) {
       }
       else {
         int idx = stoi(items[0]);
-        Node *n = nodes[idx];
+        Node *n = mesh->nodes[idx];
         n->idx = stoi(items[0]); // -1: not defined; -1: inserted
         n->pos = Eigen::RowVector3d(stof(items[1]), stof(items[2]), stof(items[3]));
         n->pos_origin = Eigen::RowVector3d(stof(items[1]), stof(items[2]), stof(items[3]));
         if (items[4] != "-1") n->idx_iso = stoi(items[4]);
         if (items[5] != "-1") n->idx_grad = stoi(items[5]);
-        if (items[6] != "-1") n->right = nodes[stoi(items[6])];
-        if (items[7] != "-1") n->left = nodes[stoi(items[7])];
-        if (items[8] != "-1") n->up = nodes[stoi(items[8])];
-        if (items[9] != "-1") n->down = nodes[stoi(items[9])];
+        if (items[6] != "-1") n->right = mesh->nodes[stoi(items[6])];
+        if (items[7] != "-1") n->left = mesh->nodes[stoi(items[7])];
+        if (items[8] != "-1") n->up = mesh->nodes[stoi(items[8])];
+        if (items[9] != "-1") n->down = mesh->nodes[stoi(items[9])];
       }
     }
   }
@@ -5028,7 +4719,7 @@ int main(int argc, char **argv) {
     float sum_len_grad_seg = 0;
     int n_iso_seg = 0;
     int n_grad_seg = 0;
-    for (auto n : nodes ) {
+    for (auto n : mesh->nodes ) {
       if (n->right) sum_len_iso_seg += (n->pos - n->right->pos).norm();
       if (n->up) sum_len_grad_seg += (n->pos - n->up->pos).norm();
       n_iso_seg ++; n_grad_seg++;
@@ -5050,7 +4741,7 @@ int main(int argc, char **argv) {
     if (ImGui::CollapsingHeader("params", ImGuiTreeNodeFlags_DefaultOpen)) {
 //      ImGui::InputFloat("timeStep", &time_step);
 
-      ImGui::InputFloat("isoSpacing", &iso_spacing);
+      ImGui::InputFloat("isoSpacing", &mesh->iso_spacing);
       ImGui::InputFloat("closeness", &w_closeness);
       ImGui::InputFloat("stretch", &w_stretch);
       ImGui::InputFloat("bridge", &w_bridge);
@@ -5065,8 +4756,11 @@ int main(int argc, char **argv) {
       ImGui::InputInt("numIter", &num_iter);
       ImGui::InputInt("test", &test);
       ImGui::InputInt("test2", &test2);
+      if (ImGui::Checkbox("forward", &is_forwarding) ) {
+
+      }
 //      ImGui::InputFloat("smoothing", &w_smooth);
-//      ImGui::InputFloat("gapSize", &gap_size);
+//      ImGui::InputFloat("gapSize", &mesh->gap_size);
 //      ImGui::InputInt("maxGap", &filter_threshold);
 //      ImGui::InputInt("saddle_displacement", &saddle_displacement);
 //      ImGui::InputInt("resolution", &w_out);
@@ -5164,14 +4858,14 @@ int main(int argc, char **argv) {
     if (ImGui::CollapsingHeader("tools", ImGuiTreeNodeFlags_DefaultOpen)) {
       {
         if (ImGui::Button("reset")) {
-          for (auto n : nodes) n->pos = n->pos_origin;
+          for (auto n : mesh->nodes) n->pos = n->pos_origin;
           initialize_param();
           redraw();
         }
       } // reset() hidden
 
       if (ImGui::Button("reorder_iso")) {
-        reorder_iso();
+        mesh->reorder_iso();
       }
 
       if (ImGui::Button("saddle")) {
@@ -5404,32 +5098,32 @@ int main(int argc, char **argv) {
         case DisplayMode_Graph:
           switch (key) {
             case GLFW_KEY_LEFT:
-              if (nodes[idx_focus]->left) {
-                idx_focus = nodes[idx_focus]->left->idx;
+              if (mesh->nodes[idx_focus]->left) {
+                idx_focus = mesh->nodes[idx_focus]->left->idx;
               }
               break;
 
             case GLFW_KEY_RIGHT:
-              if (nodes[idx_focus]->right) {
-                idx_focus = nodes[idx_focus]->right->idx;
+              if (mesh->nodes[idx_focus]->right) {
+                idx_focus = mesh->nodes[idx_focus]->right->idx;
               }
               break;
 
             case GLFW_KEY_UP:
-              if (nodes[idx_focus]->up) {
-                idx_focus = nodes[idx_focus]->up->idx;
+              if (mesh->nodes[idx_focus]->up) {
+                idx_focus = mesh->nodes[idx_focus]->up->idx;
               }
               break;
 
             case GLFW_KEY_DOWN:
-              if (nodes[idx_focus]->down) {
-                idx_focus = nodes[idx_focus]->down->idx;
+              if (mesh->nodes[idx_focus]->down) {
+                idx_focus = mesh->nodes[idx_focus]->down->idx;
               }
               break;
 
             // fix saddle
             case GLFW_KEY_P: {
-              Node *n = nodes[idx_focus];
+              Node *n = mesh->nodes[idx_focus];
               Node *n_new = n->right;
               n->down->up = n_new;
               n_new->down = n->down;
@@ -5439,7 +5133,7 @@ int main(int argc, char **argv) {
               break;
 
             case GLFW_KEY_O: {
-              Node *n = nodes[idx_focus];
+              Node *n = mesh->nodes[idx_focus];
               Node *n_new = n->left;
               n->down->up = n_new;
               n_new->down = n->down;
@@ -5456,30 +5150,30 @@ int main(int argc, char **argv) {
               switch (key) {
                 case GLFW_KEY_H:
                   type_focus = TypeFocus_Halfedge;
-                  idx_focus = nodes[idx_focus]->halfedge->idx;
+                  idx_focus = mesh->nodes[idx_focus]->halfedge->idx;
                   break;
 
                 case GLFW_KEY_LEFT:
-                  if (nodes[idx_focus]->left) {
-                    idx_focus = nodes[idx_focus]->left->idx;
+                  if (mesh->nodes[idx_focus]->left) {
+                    idx_focus = mesh->nodes[idx_focus]->left->idx;
                   }
                   break;
 
                 case GLFW_KEY_RIGHT:
-                  if (nodes[idx_focus]->right) {
-                    idx_focus = nodes[idx_focus]->right->idx;
+                  if (mesh->nodes[idx_focus]->right) {
+                    idx_focus = mesh->nodes[idx_focus]->right->idx;
                   }
                   break;
 
                 case GLFW_KEY_UP:
-                  if (nodes[idx_focus]->up) {
-                    idx_focus = nodes[idx_focus]->up->idx;
+                  if (mesh->nodes[idx_focus]->up) {
+                    idx_focus = mesh->nodes[idx_focus]->up->idx;
                   }
                   break;
 
                 case GLFW_KEY_DOWN:
-                  if (nodes[idx_focus]->down) {
-                    idx_focus = nodes[idx_focus]->down->idx;
+                  if (mesh->nodes[idx_focus]->down) {
+                    idx_focus = mesh->nodes[idx_focus]->down->idx;
                   }
                   break;
 

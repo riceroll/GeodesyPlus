@@ -93,13 +93,23 @@ add_subdirectory(lib/libShapeOp)
 
 # ============================= linking ===============================
 
+option(COMPILE_TRACER              "compile tracer lib"           OFF)
+option(COMPILE_FLATTENER           "compile flattener lib"        OFF)
+option(COMPILE_GEODESY             "compile geodesy executive"    ON)
+
+
 add_library(tracer SHARED tracer.cpp)
 target_link_libraries(tracer  igl::core igl::opengl_glfw_imgui)
+
+
+add_library(flattener SHARED flattener.cpp)
+target_link_libraries(flattener  igl::core igl::opengl_glfw_imgui)
 
 
 add_executable(${PROJECT_NAME}  geodesy.cpp)
 target_link_libraries(${PROJECT_NAME}  igl::core igl::opengl_glfw_imgui ShapeOp)
 target_link_libraries(${PROJECT_NAME}  tracer)
+target_link_libraries(${PROJECT_NAME}  flattener)
 
 
 

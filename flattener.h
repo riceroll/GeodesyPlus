@@ -18,10 +18,44 @@
 using namespace std;
 
 
+#pragma once
+
+struct HalfedgeMesh;
 struct Node;
 struct Edge;
 struct Face;
 struct Halfedge;
+
+struct HalfedgeMesh {
+  Eigen::RowVector3d center;
+
+  vector<Node*> nodes;
+  vector<Edge*> edges;
+  vector<Face*> faces;
+  vector<Halfedge*> halfedges;
+  vector<vector<Node *>> boundaries_top;
+  vector<vector<Node *>> boundaries_saddle;
+  vector<Node*> boundary_bottom;
+  vector<Node*> saddles;
+  vector<Node*> cones;
+
+  vector<vector<vector<Node *>>> isos_node;  // iso -> loop -> Node
+  vector<vector<vector<Face *>>> iso_faces;  // iso -> loop -> Face
+  vector<vector<Node*>> segments{}; // for merging
+  set<Node*> unvisited{};    // for tracing
+  vector<Node*> unvisited_vector{}; // for tracing
+  vector<Node*> printing_path{};  // for tracing
+
+
+  float iso_spacing = 10.0;
+  float gap_size;
+
+
+
+  void reorder_iso();
+
+
+};
 
 
 struct Node {
