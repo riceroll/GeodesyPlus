@@ -3470,7 +3470,6 @@ int main(int argc, char **argv) {
               << f->opacity() * scale_ratio * scale_ratio << endl;
       }
     }
-  };
 
   auto save_graph = [&]() {
     std::string outname = igl::file_dialog_save();
