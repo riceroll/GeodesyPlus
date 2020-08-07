@@ -1,3 +1,6 @@
 [submodule "lib/libigl"]
 	path = lib/libigl
 	url = https://github.com/riceroll/LibIGLforGeodesy
+[submodule "c645aac0c5852fad6fabe8c192fdc8675e607263"]
+	path = c645aac0c5852fad6fabe8c192fdc8675e607263
+	url = https://github.com/libigl/libigl.git
