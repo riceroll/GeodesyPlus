@@ -16,7 +16,7 @@
 #include <Eigen/Dense>
 
 // geodesy
-#include "flattener.h"
+#include "geometry.h"
 
 using namespace std;
 

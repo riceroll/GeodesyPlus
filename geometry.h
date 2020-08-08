@@ -7,13 +7,11 @@
 #include <algorithm>
 #include <string>
 
-// igl
-#include <igl/opengl/glfw/Viewer.h>
-
 // Eigen
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
 #include <Eigen/Dense>
+
 
 using namespace std;
 
@@ -34,7 +32,6 @@ struct HalfedgeMesh {
   vector<Face*> faces;
   vector<Halfedge*> halfedges;
   vector<vector<Node *>> boundaries_top;
-  vector<vector<Node *>> boundaries_saddle;
   vector<Node*> boundary_bottom;
   vector<Node*> saddles;
   vector<Node*> cones;
@@ -46,14 +43,30 @@ struct HalfedgeMesh {
   vector<Node*> unvisited_vector{}; // for tracing
   vector<Node*> printing_path{};  // for tracing
 
-
   float iso_spacing = 10.0;
   float gap_size;
-
+  bool debug = true;
 
 
   void reorder_iso();
 
+  void fix_saddle(Node* n_left, Node* n_right);
+
+  void fix_saddles();
+
+  void subdivide_edge(Node* n);
+
+  Edge* add_edge(Node* n_a, Node* n_b, string type);
+
+  void triangulate();
+
+  void upsample();
+
+  bool find_the_other_face(Node* n_a, Node* n_b, vector<Node*>* ns_triplet, vector<Edge*>* es_triplet);
+
+  bool complete_face(vector<Edge*> es, vector<Node*> ns);
+
+  void halfedgize();
 
 };
 

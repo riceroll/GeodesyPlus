@@ -92,24 +92,31 @@ add_subdirectory(lib/libShapeOp)
 #file(GLOB SRCFILES *.cpp)
 
 # ============================= linking ===============================
-
-option(COMPILE_TRACER              "compile tracer lib"           OFF)
-option(COMPILE_FLATTENER           "compile flattener lib"        OFF)
-option(COMPILE_GEODESY             "compile geodesy executive"    ON)
+option(MAIN             "compile geodesy executive"    ON)
 
 
-add_library(tracer SHARED tracer.cpp)
-target_link_libraries(tracer  igl::core igl::opengl_glfw_imgui)
+add_library(tracer SHARED tracer.cpp)   # compile tracer.cpp to a shared library
+target_link_libraries(tracer  igl::core igl::opengl_glfw_imgui)   # link igl and imgui to tracer
+
+add_library(geometry SHARED geometry.cpp)   # compile flattener.cpp to a shared library
+target_link_libraries(geometry  igl::core igl::opengl_glfw_imgui)    # link igl and imgui to flattener
+
+add_library(model SHARED model.cpp)   # compile flattener.cpp to a shared library
+target_link_libraries(model  geometry)    # link igl and imgui to flattener
+target_link_libraries(model  ShapeOp)
+target_link_libraries(model  igl::core igl::opengl_glfw_imgui)    # link igl and imgui to flattener
 
 
-add_library(flattener SHARED flattener.cpp)
-target_link_libraries(flattener  igl::core igl::opengl_glfw_imgui)
-
-
-add_executable(${PROJECT_NAME}  geodesy.cpp)
-target_link_libraries(${PROJECT_NAME}  igl::core igl::opengl_glfw_imgui ShapeOp)
-target_link_libraries(${PROJECT_NAME}  tracer)
-target_link_libraries(${PROJECT_NAME}  flattener)
+if (MAIN)
+  message("Compile main.")
+  add_executable(${PROJECT_NAME} main.cpp)    # compile geodesy.cpp to executable
+  target_link_libraries(${PROJECT_NAME}  igl::core igl::opengl_glfw_imgui ShapeOp)    # link igl
+  target_link_libraries(${PROJECT_NAME}  tracer)    # link tracer
+  target_link_libraries(${PROJECT_NAME}  geometry) # link flattener
+  target_link_libraries(${PROJECT_NAME}  model) # link flattener
+else()
+  message("Does not compile main.")
+endif()
 
 
 
