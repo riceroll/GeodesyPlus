@@ -41,10 +41,8 @@ struct Model {
   float w_angle_stretch = 100.0;
   float w_angle_shear = 0.0;
   float w_spreading = 0.0;
-  float w_smooth = 0.1;
 
   bool forward = false;
-
 
   Model(HalfedgeMesh* mesh) {
     this->mesh = mesh;

@@ -667,7 +667,17 @@ void HalfedgeMesh::halfedgize() {
     }
   }
   cout<<"done."<<endl;
-};
+
+  this->reset();
+  cout<<"reset."<<endl;
+}
+
+void HalfedgeMesh::reset() {
+  for (auto n : this->nodes) n->pos = n->pos_origin;
+
+  for (auto e : this->edges) e->rest_len = e->length();
+}
+
 
 float Edge::length() {
   return ((*next(nodes.begin(), 0))->pos - (*next(nodes.begin(), 1))->pos ).norm();

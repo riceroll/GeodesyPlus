@@ -2,7 +2,6 @@
 
 
 void Model::step() {
-  cout<<"done."<<endl<<"Updating position......";
   { // flattening velocity
     double d_max = 0;
     for (auto n : mesh->nodes) if (abs(n->pos.z()) > d_max) d_max = abs(n->pos.z());
@@ -19,8 +18,6 @@ void Model::step() {
       n->pos += n->velocity;
     }
   }
-
-  cout<<"done."<<endl<<"Updating solver......";
   solver->reset();
 
   // setPoints
@@ -45,18 +42,6 @@ void Model::step() {
   // EdgeStrainConstraint
   for (auto e : mesh->edges) {
     std::vector<int> id_vector;
-    if (not e->halfedge) {
-      cout<<"no halfedge"<<e->idx<<endl; getchar();
-    }
-    if (not e->halfedge->node) {
-      cout<<"no halfedge->node"<<e->idx<<endl; getchar();
-    }
-    if (not e->halfedge->twin) {
-      cout<<"no twin"<<e->idx<<endl; cout<<" "<<e->halfedge->node->idx<<endl; getchar();
-    }
-    if (not e->halfedge->twin->node) {
-      cout<<"no twin node"<<e->idx<<endl; cout<<" "<<e->halfedge->node->idx<<endl; getchar();
-    }
 
     id_vector.push_back(e->halfedge->node->idx);
     id_vector.push_back(e->halfedge->twin->node->idx);
@@ -67,7 +52,7 @@ void Model::step() {
     }
     if (e->spring == "bridge") {
       weight = w_bridge;
-      c = std::make_shared<ShapeOp::EdgeStrainConstraint>(id_vector, weight, solver->getPoints());
+      c = std::make_shared<ShapeOp::EdgeStrainConstraint>(id_vector, weight, solver->getPoints(), 1.0, 1.0);
     }
     double rest_len =  e->rest_len;
     c->setEdgeLength(rest_len);
@@ -114,7 +99,7 @@ void Model::step() {
     }
   }
 
-  // AngleConstraint for stretch springs
+  // AngleConstraint for stretch springs (smooth the trace)
   {
     for (auto n : mesh->nodes) {
       std::vector<int> id_vector;
@@ -138,7 +123,7 @@ void Model::step() {
     }
   }
 
-  // AngleConstraint for shearing (negative effect on flattening)
+  // AngleConstraint for shearing
   for (auto f : mesh->faces) {
     int i0, i1, i2;
     Halfedge* h = f->halfedge;
@@ -169,7 +154,7 @@ void Model::step() {
     if (w_angle_shear > 0) solver->addConstraint(c);
   }
 
-  // PlaneConstraint
+  // PlaneConstraint (not used)
   {
     std::vector<int> id_vector;
     for (auto n : mesh->nodes) {
@@ -209,8 +194,6 @@ void Model::step() {
     if (w_spreading > 0.) solver->addForces(f);
   }
 
-  cout<<"done."<<endl<<"Solving......";
-
   solver->initialize();
   solver->setDamping(damping);
 //    solver->setTimeStep(time_step);
@@ -225,5 +208,4 @@ void Model::step() {
     e->len = e->length();
   }
 
-  cout<<"done."<<endl;
 };

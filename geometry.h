@@ -44,7 +44,7 @@ struct HalfedgeMesh {
   vector<Node*> printing_path{};  // for tracing
 
   float iso_spacing = 10.0;
-  float gap_size;
+  float gap_size = 0.48;
   bool debug = true;
 
 
@@ -67,6 +67,8 @@ struct HalfedgeMesh {
   bool complete_face(vector<Edge*> es, vector<Node*> ns);
 
   void halfedgize();
+
+  void reset();
 
 };
 
@@ -109,7 +111,7 @@ struct Node {
   float shrinkage = -1; // defaut shrinkage
 
   // for mapping
-  Eigen::RowVector3d color = Eigen::RowVector3d(1.0, 0.0, 0.0);
+  Eigen::RowVector3d color = Eigen::RowVector3d(0.5, 0.5, 0.5);
 };
 
 struct Edge {
